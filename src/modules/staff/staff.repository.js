@@ -1,0 +1,13 @@
+const { prisma } = require("../../config/database");
+const userSelect = { id: true, fullName: true, email: true, phoneNumber: true, role: true, status: true };
+const include = { user: { select: userSelect }, department: true, teacherAssignments: { include: { subject: true, class: true } }, teacherAttendance: true };
+const findById = (id) => prisma.staff.findUnique({ where: { id }, include });
+const findAll = (where) => prisma.staff.findMany({ where, include, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] });
+const findEmail = (email) => prisma.user.findUnique({ where: { email } });
+const findStaffNumber = (staffNumber) => prisma.staff.findUnique({ where: { staffNumber } });
+const create = (data) => prisma.staff.create({ data, include });
+const update = (id, data) => prisma.staff.update({ where: { id }, data, include });
+const remove = (id) => prisma.staff.delete({ where: { id } });
+const createUser = (data, tx) => tx.user.create({ data });
+const createStaff = (data, tx) => tx.staff.create({ data, include });
+module.exports = { findById, findAll, findEmail, findStaffNumber, create, update, remove, createUser, createStaff };

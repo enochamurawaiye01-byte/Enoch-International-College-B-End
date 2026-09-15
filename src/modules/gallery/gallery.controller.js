@@ -1,0 +1,13 @@
+const service = require("./gallery.service");
+const { uploadFile } = require("../../config/storage");
+const wrap = (action, status = 200) => async (req, res, next) => { try { return res.status(status).json({ success: true, data: await action(req) }); } catch (error) { next(error); } };
+const createAlbum = wrap((req) => service.createAlbum(req.body, req.user), 201);
+const list = wrap((req) => service.list(Boolean(req.user)));
+const getAlbum = wrap((req) => service.getAlbum(req.params.id));
+const updateAlbum = wrap((req) => service.updateAlbum(req.params.id, req.body, req.user));
+const publishAlbum = wrap((req) => service.publishAlbum(req.params.id, req.body.published, req.user));
+const removeAlbum = wrap((req) => service.removeAlbum(req.params.id, req.user));
+const addImage = wrap(async (req) => { const media = req.file ? await uploadFile({ file: req.file, folder: "gallery" }) : null; return service.addImage(req.params.id, { ...req.body, ...(media ? { imageUrl: media.url } : {}) }, req.user); }, 201);
+const updateImage = wrap((req) => service.updateImage(req.params.imageId, req.body, req.user));
+const removeImage = wrap((req) => service.removeImage(req.params.imageId, req.user));
+module.exports = { createAlbum, list, getAlbum, updateAlbum, publishAlbum, removeAlbum, addImage, updateImage, removeImage };

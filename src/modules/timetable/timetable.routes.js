@@ -1,0 +1,17 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./timetable.controller");
+const { TIMETABLE_ROLES } = require("./timetable.constants");
+const { slotSchema, createTimetableSchema, updateTimetableSchema } = require("./timetable.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...TIMETABLE_ROLES));
+router.post("/", requireRoles("SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"), validate(createTimetableSchema), controller.create);
+router.get("/", controller.getAll);
+router.get("/:id", controller.getById);
+router.patch("/:id", validate(updateTimetableSchema), controller.update);
+router.post("/:id/slots", validate(slotSchema), controller.createSlot);
+router.patch("/:id/slots/:slotId", validate(slotSchema.extend({ timetableId: require("zod").string().uuid() })), controller.updateSlot);
+router.delete("/:id/slots/:slotId", controller.removeSlot);
+module.exports = router;

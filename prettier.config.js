@@ -1,0 +1,2 @@
+// Prettier config
+module.exports = {};

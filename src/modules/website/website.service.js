@@ -1,0 +1,16 @@
+const AppError = require("../../core/errors/AppError");
+const NotFoundError = require("../../core/errors/NotFoundError");
+const repository = require("./website.repository");
+const { isAdmin } = require("./website.utils");
+const assertAdmin = (user) => { if (!isAdmin(user.role)) throw new AppError("Website administration access required.", 403, "WEBSITE_ACCESS_DENIED"); };
+const publicSettings = (schoolId) => repository.findSettings(schoolId, true);
+const settings = (schoolId, user) => { assertAdmin(user); return repository.findSettings(schoolId, false); };
+const setSetting = (schoolId, data, user) => { assertAdmin(user); return repository.upsertSetting(schoolId, data); };
+const publicPages = (schoolId) => repository.findPages(schoolId, true);
+const pages = (schoolId, user) => { assertAdmin(user); return repository.findPages(schoolId, false); };
+const getPage = async (schoolId, slug, user) => { const page = await repository.findPage(schoolId, slug, !user); if (!page || (!user && page.status !== "PUBLISHED")) throw new NotFoundError("Website page not found"); return page; };
+const createPage = (schoolId, data, user) => { assertAdmin(user); return repository.createPage(schoolId, { ...data, status: data.status || "DRAFT" }); };
+const updatePage = async (schoolId, slug, data, user) => { assertAdmin(user); await getPage(schoolId, slug, user); return repository.updatePage(schoolId, slug, data); };
+const saveSection = async (schoolId, slug, data, user) => { assertAdmin(user); const page = await getPage(schoolId, slug, user); return repository.upsertSection(page.id, data); };
+const removeSection = async (schoolId, slug, sectionId, user) => { assertAdmin(user); await getPage(schoolId, slug, user); return repository.removeSection(sectionId); };
+module.exports = { publicSettings, settings, setSetting, publicPages, pages, getPage, createPage, updatePage, saveSection, removeSection };

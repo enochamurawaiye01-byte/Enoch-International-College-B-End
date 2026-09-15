@@ -1,0 +1,13 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./enrollment.controller");
+const { createEnrollmentSchema, updateEnrollmentSchema } = require("./enrollment.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles("ADMIN", "SUPER_ADMIN"));
+router.post("/", validate(createEnrollmentSchema), controller.create);
+router.get("/", controller.getAll);
+router.get("/:id", controller.getById);
+router.patch("/:id", validate(updateEnrollmentSchema), controller.update);
+module.exports = router;

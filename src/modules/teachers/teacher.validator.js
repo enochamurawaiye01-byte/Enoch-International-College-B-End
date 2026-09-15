@@ -1,0 +1,4 @@
+const { z } = require("zod");
+const uuid = z.string().uuid("Must be a valid ID.");
+const createTeacherSchema = z.object({ firstName: z.string().trim().min(1).max(80), middleName: z.string().trim().max(80).nullable().optional(), lastName: z.string().trim().min(1).max(80), email: z.string().email(), phoneNumber: z.string().trim().max(30).nullable().optional(), password: z.string().min(8).max(100), staffNumber: z.string().trim().min(2).max(50), gender: z.enum(["MALE", "FEMALE", "OTHER"]).nullable().optional(), dateOfBirth: z.coerce.date().nullable().optional(), departmentId: uuid.nullable().optional(), jobTitle: z.string().trim().max(120).nullable().optional(), employmentType: z.enum(["FULL_TIME", "PART_TIME", "CONTRACT", "TEMPORARY"]).optional(), employmentDate: z.coerce.date().nullable().optional(), qualification: z.string().trim().max(300).nullable().optional() }).strict();
+module.exports = { createTeacherSchema };

@@ -1,0 +1,11 @@
+const { prisma } = require("../../config/database");
+const AppError = require("../../core/errors/AppError");
+const NotFoundError = require("../../core/errors/NotFoundError");
+const repository = require("./staff.repository");
+const { buildUser } = require("./staff.utils");
+const getById = async (id) => { const staff = await repository.findById(id); if (!staff) throw new NotFoundError("Staff member not found"); return staff; };
+const create = async (data, schoolId, role = "STAFF") => { if (await repository.findEmail(data.email.toLowerCase())) throw new AppError("Email is already in use.", 409, "EMAIL_EXISTS"); if (await repository.findStaffNumber(data.staffNumber)) throw new AppError("Staff number already exists.", 409, "STAFF_NUMBER_EXISTS"); return prisma.$transaction(async (tx) => { const user = await repository.createUser(await buildUser(data, schoolId, role), tx); return repository.createStaff({ userId: user.id, staffNumber: data.staffNumber, firstName: data.firstName, middleName: data.middleName || null, lastName: data.lastName, gender: data.gender || null, dateOfBirth: data.dateOfBirth || null, departmentId: data.departmentId || null, jobTitle: data.jobTitle || null, employmentType: data.employmentType || "FULL_TIME", status: data.status || "ACTIVE", employmentDate: data.employmentDate || null, qualification: data.qualification || null, address: data.address || null }, tx); }); };
+const update = async (id, data) => { await getById(id); return repository.update(id, data); };
+const remove = async (id) => { const staff = await getById(id); if (staff.teacherAssignments.length || staff.teacherAttendance.length) throw new AppError("Staff with assignments or attendance history must be deactivated instead.", 409, "STAFF_HAS_HISTORY"); return repository.remove(id); };
+const getAll = (query) => repository.findAll(Object.fromEntries(["departmentId", "status", "employmentType"].filter((key) => query[key]).map((key) => [key, query[key]])));
+module.exports = { create, update, remove, getById, getAll };

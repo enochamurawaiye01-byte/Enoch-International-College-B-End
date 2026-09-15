@@ -1,0 +1,11 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./audit-log.controller");
+const { AUDIT_LOG_ROLES } = require("./audit-log.constants");
+const { auditQuerySchema } = require("./audit-log.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...AUDIT_LOG_ROLES));
+router.get("/", validate(auditQuerySchema), controller.list);
+module.exports = router;

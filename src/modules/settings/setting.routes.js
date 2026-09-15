@@ -1,0 +1,12 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./setting.controller");
+const { SETTING_ROLES } = require("./setting.constants");
+const { settingSchema } = require("./setting.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...SETTING_ROLES));
+router.get("/", controller.list);
+router.put("/", validate(settingSchema), controller.set);
+module.exports = router;

@@ -1,0 +1,11 @@
+const AppError = require("../../core/errors/AppError");
+const NotFoundError = require("../../core/errors/NotFoundError");
+const repository = require("./hostel.repository");
+const { HOSTEL_ERRORS: ERRORS } = require("./hostel.constants");
+const createHostel = (data) => repository.createHostel({ ...data, status: data.status || "ACTIVE" });
+const getHostels = () => repository.findHostels();
+const createRoom = async (data) => { if (!await repository.findHostel(data.hostelId)) throw new NotFoundError(ERRORS.HOSTEL_NOT_FOUND); return repository.createRoom(data); };
+const createBed = async (data) => { if (!await repository.findRoom(data.roomId)) throw new NotFoundError(ERRORS.ROOM_NOT_FOUND); return repository.createBed(data); };
+const allocate = async (data) => { if (!await repository.findBed(data.bedId)) throw new NotFoundError(ERRORS.BED_NOT_FOUND); if (!await repository.findStudent(data.studentId)) throw new NotFoundError(ERRORS.STUDENT_NOT_FOUND); const allocation = await repository.createAllocation({ ...data, fee: data.fee || 0 }); if (!allocation) throw new AppError(ERRORS.BED_OCCUPIED, 409, "BED_OCCUPIED"); return allocation; };
+const checkout = async (id, data) => { const allocation = await repository.findAllocation(id); if (!allocation) throw new NotFoundError(ERRORS.ALLOCATION_NOT_FOUND); if (allocation.status !== "ACTIVE") throw new AppError("Allocation is already closed.", 409, "ALLOCATION_CLOSED"); return repository.checkout(id, data); };
+module.exports = { createHostel, getHostels, createRoom, createBed, allocate, checkout };

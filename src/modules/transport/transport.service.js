@@ -1,0 +1,11 @@
+const AppError = require("../../core/errors/AppError");
+const NotFoundError = require("../../core/errors/NotFoundError");
+const repository = require("./transport.repository");
+const { TRANSPORT_ERRORS: ERRORS } = require("./transport.constants");
+const createVehicle = async (data) => { if (await repository.findVehicleByRegistration(data.registrationNumber)) throw new AppError(ERRORS.VEHICLE_EXISTS, 409, "VEHICLE_EXISTS"); return repository.createVehicle({ ...data, status: data.status || "ACTIVE" }); };
+const getVehicles = () => repository.findVehicles();
+const createRoute = async (data) => { if (data.vehicleId && !await repository.findVehicle(data.vehicleId)) throw new NotFoundError(ERRORS.VEHICLE_NOT_FOUND); return repository.createRoute({ ...data, fee: data.fee || 0 }); };
+const getRoutes = () => repository.findRoutes();
+const createAssignment = async (data) => { if (!await repository.findStudent(data.studentId)) throw new NotFoundError(ERRORS.STUDENT_NOT_FOUND); if (!await repository.findRoute(data.routeId)) throw new NotFoundError(ERRORS.ROUTE_NOT_FOUND); if (await repository.findAssignment(data.studentId, data.routeId)) throw new AppError(ERRORS.ASSIGNMENT_EXISTS, 409, "ASSIGNMENT_EXISTS"); return repository.createAssignment({ ...data, vehicleId: data.vehicleId || null }); };
+const getAssignments = () => repository.findAssignments();
+module.exports = { createVehicle, getVehicles, createRoute, getRoutes, createAssignment, getAssignments };

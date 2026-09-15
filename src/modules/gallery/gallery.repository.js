@@ -1,0 +1,13 @@
+const { prisma } = require("../../config/database");
+const include = { images: { orderBy: { sortOrder: "asc" } } };
+const findAlbum = (id) => prisma.galleryAlbum.findUnique({ where: { id }, include });
+const findSlug = (slug) => prisma.galleryAlbum.findUnique({ where: { slug } });
+const findAlbums = (where) => prisma.galleryAlbum.findMany({ where, include, orderBy: { createdAt: "desc" } });
+const createAlbum = (data) => prisma.galleryAlbum.create({ data, include });
+const updateAlbum = (id, data) => prisma.galleryAlbum.update({ where: { id }, data, include });
+const removeAlbum = (id) => prisma.galleryAlbum.delete({ where: { id } });
+const createImage = (data) => prisma.galleryImage.create({ data });
+const findImage = (id) => prisma.galleryImage.findUnique({ where: { id }, include: { album: true } });
+const updateImage = (id, data) => prisma.galleryImage.update({ where: { id }, data });
+const removeImage = (id) => prisma.galleryImage.delete({ where: { id } });
+module.exports = { findAlbum, findSlug, findAlbums, createAlbum, updateAlbum, removeAlbum, createImage, findImage, updateImage, removeImage };

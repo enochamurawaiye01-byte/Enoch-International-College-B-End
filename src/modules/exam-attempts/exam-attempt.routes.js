@@ -1,0 +1,10 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const controller = require("./exam-attempt.controller");
+const { startAttemptSchema, submitAttemptSchema } = require("./exam-attempt.validator");
+const router = express.Router();
+router.use(authenticate);
+router.post("/start", validate(startAttemptSchema), controller.start);
+router.post("/:id/submit", validate(submitAttemptSchema), controller.submit);
+module.exports = router;

@@ -1,0 +1,19 @@
+const ADMISSION_STATUSES = Object.freeze([
+	"APPLIED",
+	"UNDER_REVIEW",
+	"APPROVED",
+	"REJECTED",
+	"CONVERTED",
+	"WITHDRAWN",
+]);
+
+const ADMISSION_ROLES = Object.freeze([
+	"SUPER_ADMIN",
+	"ADMIN",
+	"MANAGEMENT",
+	"PRINCIPAL",
+	"VICE_PRINCIPAL",
+	"HEAD_TEACHER",
+]);
+
+module.exports = { ADMISSION_STATUSES, ADMISSION_ROLES };

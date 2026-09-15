@@ -1,0 +1,15 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./announcement.controller");
+const { ANNOUNCEMENT_ROLES } = require("./announcement.constants");
+const { createAnnouncementSchema, updateAnnouncementSchema, publicationSchema } = require("./announcement.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...ANNOUNCEMENT_ROLES));
+router.post("/", validate(createAnnouncementSchema), controller.create);
+router.get("/", controller.list);
+router.get("/:id", controller.getById);
+router.patch("/:id", validate(updateAnnouncementSchema), controller.update);
+router.patch("/:id/publication", validate(publicationSchema), controller.publish);
+module.exports = router;

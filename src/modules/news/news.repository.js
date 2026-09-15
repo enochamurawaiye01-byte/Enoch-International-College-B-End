@@ -1,0 +1,10 @@
+const { prisma } = require("../../config/database");
+const include = { author: { select: { id: true, fullName: true, role: true } } };
+const findById = (id) => prisma.newsArticle.findUnique({ where: { id }, include });
+const findBySlug = (slug) => prisma.newsArticle.findUnique({ where: { slug }, include });
+const create = (data) => prisma.newsArticle.create({ data, include });
+const update = (id, data) => prisma.newsArticle.update({ where: { id }, data, include });
+const remove = (id) => prisma.newsArticle.delete({ where: { id } });
+const findMany = (where, pagination) => prisma.newsArticle.findMany({ where, ...pagination, include, orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }] });
+const count = (where) => prisma.newsArticle.count({ where });
+module.exports = { findById, findBySlug, create, update, remove, findMany, count };

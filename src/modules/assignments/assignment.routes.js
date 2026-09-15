@@ -1,0 +1,16 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./assignment.controller");
+const { ASSIGNMENT_ROLES } = require("./assignment.constants");
+const { createAssignmentSchema, updateAssignmentSchema, submissionSchema, gradeSchema } = require("./assignment.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...ASSIGNMENT_ROLES));
+router.post("/", requireRoles("SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER", "TEACHER"), validate(createAssignmentSchema), controller.create);
+router.get("/", controller.getAll);
+router.get("/:id", controller.getById);
+router.patch("/:id", validate(updateAssignmentSchema), controller.update);
+router.post("/:id/submit", requireRoles("STUDENT"), validate(submissionSchema), controller.submit);
+router.patch("/submissions/:submissionId", requireRoles("SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER", "TEACHER"), validate(gradeSchema), controller.grade);
+module.exports = router;

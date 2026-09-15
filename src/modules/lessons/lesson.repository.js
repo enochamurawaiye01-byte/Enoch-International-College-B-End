@@ -1,0 +1,14 @@
+const { prisma } = require("../../config/database");
+const include = { staff: true, subject: true, class: { include: { classLevel: true } }, session: true, term: true };
+const findById = (id) => prisma.lesson.findUnique({ where: { id }, include });
+const findStaff = (id) => prisma.staff.findUnique({ where: { id } });
+const findStaffByUserId = (userId) => prisma.staff.findUnique({ where: { userId } });
+const findSubject = (id) => prisma.subject.findUnique({ where: { id } });
+const findClass = (id) => prisma.class.findUnique({ where: { id } });
+const findSession = (id) => prisma.academicSession.findUnique({ where: { id } });
+const findTerm = (id) => prisma.term.findUnique({ where: { id } });
+const findAssignment = (staffId, subjectId, classId, sessionId, termId) => prisma.teacherAssignment.findFirst({ where: { staffId, subjectId, classId, AND: [{ OR: [{ sessionId: null }, { sessionId }] }, { OR: [{ termId: null }, { termId }] }] } });
+const create = (data) => prisma.lesson.create({ data, include });
+const update = (id, data) => prisma.lesson.update({ where: { id }, data, include });
+const findAll = (where) => prisma.lesson.findMany({ where, include, orderBy: [{ lessonDate: "desc" }, { createdAt: "desc" }] });
+module.exports = { findById, findStaff, findStaffByUserId, findSubject, findClass, findSession, findTerm, findAssignment, create, update, findAll };

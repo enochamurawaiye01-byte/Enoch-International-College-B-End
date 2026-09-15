@@ -1,0 +1,11 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./module-access.controller");
+const { moduleAccessSchema } = require("./module-access.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles("ADMIN", "SUPER_ADMIN"));
+router.get("/", controller.list);
+router.put("/", validate(moduleAccessSchema), controller.set);
+module.exports = router;

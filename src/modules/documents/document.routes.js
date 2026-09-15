@@ -1,0 +1,15 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { upload } = require("../../core/middleware/upload.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./document.controller");
+const { DOCUMENT_ROLES } = require("./document.constants");
+const { documentSchema } = require("./document.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...DOCUMENT_ROLES));
+router.post("/", upload.single("file"), validate(documentSchema), controller.create);
+router.get("/", controller.list);
+router.get("/:id", controller.getById);
+router.delete("/:id", controller.remove);
+module.exports = router;

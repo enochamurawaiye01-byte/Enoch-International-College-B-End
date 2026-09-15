@@ -1,0 +1,17 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./prefect.controller");
+const { PREFECT_ROLES } = require("./prefect.constants");
+const { createPositionSchema, createAssignmentSchema, updateAssignmentSchema } = require("./prefect.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...PREFECT_ROLES));
+router.post("/positions", validate(createPositionSchema), controller.createPosition);
+router.get("/positions", controller.listPositions);
+router.post("/", validate(createAssignmentSchema), controller.create);
+router.get("/", controller.list);
+router.get("/:id", controller.getById);
+router.patch("/:id", validate(updateAssignmentSchema), controller.update);
+router.delete("/:id", (req, res, next) => { req.body = { status: "REVOKED", endDate: new Date() }; return controller.update(req, res, next); });
+module.exports = router;

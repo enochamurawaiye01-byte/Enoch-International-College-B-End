@@ -1,0 +1,12 @@
+const { prisma } = require("../../config/database");
+const findAll = () => prisma.permission.findMany({ orderBy: [{ module: "asc" }, { action: "asc" }] });
+const findById = (id) => prisma.permission.findUnique({ where: { id }, include: { roles: true, users: true } });
+const findByKey = (key) => prisma.permission.findUnique({ where: { key } });
+const create = (data) => prisma.permission.create({ data });
+const update = (id, data) => prisma.permission.update({ where: { id }, data });
+const remove = (id) => prisma.permission.delete({ where: { id } });
+const assignRole = (data) => prisma.rolePermission.upsert({ where: { roleId_permissionId: data }, update: {}, create: data });
+const assignUser = (data) => prisma.userPermission.upsert({ where: { userId_permissionId: data }, update: {}, create: data });
+const revokeRole = (data) => prisma.rolePermission.delete({ where: { roleId_permissionId: data } });
+const revokeUser = (data) => prisma.userPermission.delete({ where: { userId_permissionId: data } });
+module.exports = { findAll, findById, findByKey, create, update, remove, assignRole, assignUser, revokeRole, revokeUser };

@@ -1,0 +1,12 @@
+const { prisma } = require("../../config/database");
+const include = { student: { include: { currentClass: { include: { classLevel: true } } } }, session: true, term: true, entries: { include: { subject: true } } };
+const findById = (id) => prisma.reportCard.findUnique({ where: { id }, include });
+const findExisting = (studentId, sessionId, termId) => prisma.reportCard.findUnique({ where: { studentId_sessionId_termId: { studentId, sessionId, termId } }, include });
+const findStudent = (id) => prisma.student.findUnique({ where: { id }, include: { currentClass: true } });
+const findSession = (id) => prisma.academicSession.findUnique({ where: { id } });
+const findTerm = (id) => prisma.term.findUnique({ where: { id } });
+const findSubject = (id) => prisma.subject.findUnique({ where: { id } });
+const upsert = (where, data) => prisma.reportCard.upsert({ where, update: data, create: data, include });
+const update = (id, data) => prisma.reportCard.update({ where: { id }, data, include });
+const findAll = (where) => prisma.reportCard.findMany({ where, include, orderBy: { updatedAt: "desc" } });
+module.exports = { findById, findExisting, findStudent, findSession, findTerm, findSubject, upsert, update, findAll };

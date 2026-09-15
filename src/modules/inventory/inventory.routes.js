@@ -1,0 +1,14 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./inventory.controller");
+const { createItemSchema, movementSchema } = require("./inventory.validator");
+const router = express.Router();
+const managers = requireRoles("ADMIN", "SUPER_ADMIN", "STAFF");
+router.use(authenticate, managers);
+router.post("/items", validate(createItemSchema), controller.createItem);
+router.get("/items", controller.getItems);
+router.get("/items/:id", controller.getItem);
+router.post("/movements", validate(movementSchema), controller.createMovement);
+module.exports = router;

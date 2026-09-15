@@ -1,0 +1,15 @@
+const { prisma } = require("../../config/database");
+const include = { staff: true, subject: true, class: { include: { classLevel: true } }, session: true, term: true, submissions: { include: { student: true } } };
+const findById = (id) => prisma.assignment.findUnique({ where: { id }, include });
+const findStaffByUserId = (userId) => prisma.staff.findUnique({ where: { userId } });
+const findStudentByUserId = (userId) => prisma.student.findUnique({ where: { userId }, include: { currentClass: true } });
+const findReference = (data) => Promise.all([prisma.staff.findUnique({ where: { id: data.staffId } }), prisma.subject.findUnique({ where: { id: data.subjectId } }), prisma.class.findUnique({ where: { id: data.classId } }), prisma.academicSession.findUnique({ where: { id: data.sessionId } }), prisma.term.findUnique({ where: { id: data.termId } })]);
+const findAssignment = (staffId, subjectId, classId, sessionId, termId) => prisma.teacherAssignment.findFirst({ where: { staffId, subjectId, classId, AND: [{ OR: [{ sessionId: null }, { sessionId }] }, { OR: [{ termId: null }, { termId }] }] } });
+const create = (data) => prisma.assignment.create({ data, include });
+const update = (id, data) => prisma.assignment.update({ where: { id }, data, include });
+const findAll = (where) => prisma.assignment.findMany({ where, include, orderBy: { dueDate: "desc" } });
+const createSubmission = (data) => prisma.assignmentSubmission.create({ data, include: { student: true, assignment: true } });
+const findSubmission = (assignmentId, studentId) => prisma.assignmentSubmission.findUnique({ where: { assignmentId_studentId: { assignmentId, studentId } } });
+const findSubmissionById = (id) => prisma.assignmentSubmission.findUnique({ where: { id }, include: { assignment: true } });
+const updateSubmission = (id, data) => prisma.assignmentSubmission.update({ where: { id }, data, include: { student: true, assignment: true } });
+module.exports = { findById, findStaffByUserId, findStudentByUserId, findReference, findAssignment, create, update, findAll, createSubmission, findSubmission, findSubmissionById, updateSubmission };

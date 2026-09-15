@@ -1,0 +1,10 @@
+const { prisma } = require("../../config/database");
+const include = { parentLinks: { include: { student: { include: { currentClass: true } } } }, user: { select: { id: true, email: true, phoneNumber: true, status: true } } };
+const findById = (id) => prisma.parent.findUnique({ where: { id }, include });
+const findAll = () => prisma.parent.findMany({ include, orderBy: { lastName: "asc" } });
+const findUserByEmail = (email) => prisma.user.findUnique({ where: { email } });
+const findStudent = (id) => prisma.student.findUnique({ where: { id } });
+const findLink = (parentId, studentId) => prisma.parentStudent.findUnique({ where: { parentId_studentId: { parentId, studentId } } });
+const createLink = (data) => prisma.parentStudent.create({ data, include: { student: true } });
+const deleteLink = (parentId, studentId) => prisma.parentStudent.delete({ where: { parentId_studentId: { parentId, studentId } } });
+module.exports = { findById, findAll, findUserByEmail, findStudent, findLink, createLink, deleteLink };

@@ -1,0 +1,13 @@
+const { prisma } = require("../../config/database");
+const bookInclude = { copies: { include: { loans: { where: { status: { in: ["BORROWED", "OVERDUE"] } } } } } };
+const findBook = (id) => prisma.libraryBook.findUnique({ where: { id }, include: bookInclude });
+const findBooks = (query) => prisma.libraryBook.findMany({ where: query, include: bookInclude, orderBy: { title: "asc" } });
+const createBook = (data) => prisma.libraryBook.create({ data, include: bookInclude });
+const findCopy = (id) => prisma.libraryCopy.findUnique({ where: { id }, include: { book: true } });
+const findCopyByCode = (copyCode) => prisma.libraryCopy.findUnique({ where: { copyCode } });
+const createCopy = (data) => prisma.libraryCopy.create({ data, include: { book: true } });
+const findLoan = (id) => prisma.libraryLoan.findUnique({ where: { id }, include: { copy: { include: { book: true } }, student: true, staff: true } });
+const findLoans = (where) => prisma.libraryLoan.findMany({ where, include: { copy: { include: { book: true } }, student: true, staff: true }, orderBy: { issueDate: "desc" } });
+const createLoan = (data) => prisma.$transaction(async (tx) => { const copy = await tx.libraryCopy.findUnique({ where: { id: data.copyId } }); if (!copy || !copy.isAvailable) return null; const loan = await tx.libraryLoan.create({ data }); await tx.libraryCopy.update({ where: { id: data.copyId }, data: { isAvailable: false } }); return loan; });
+const returnLoan = (id, data) => prisma.$transaction(async (tx) => { const loan = await tx.libraryLoan.update({ where: { id }, data: { ...data, status: "RETURNED", returnDate: data.returnDate || new Date() } }); await tx.libraryCopy.update({ where: { id: loan.copyId }, data: { isAvailable: true } }); return loan; });
+module.exports = { findBook, findBooks, createBook, findCopy, findCopyByCode, createCopy, findLoan, findLoans, createLoan, returnLoan };

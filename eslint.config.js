@@ -1,0 +1,2 @@
+// ESLint config
+module.exports = {};

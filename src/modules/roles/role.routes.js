@@ -1,0 +1,18 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./role.controller");
+const { ROLE_ROLES } = require("./role.constants");
+const { createRoleSchema, updateRoleSchema, roleAssignmentSchema, userRoleSchema } = require("./role.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...ROLE_ROLES));
+router.post("/", validate(createRoleSchema), controller.create);
+router.get("/", controller.getAll);
+router.get("/:id", controller.getById);
+router.patch("/:id", validate(updateRoleSchema), controller.update);
+router.delete("/:id", controller.remove);
+router.post("/assign", validate(roleAssignmentSchema), controller.assign);
+router.post("/revoke", validate(roleAssignmentSchema), controller.revoke);
+router.patch("/users/:userId", validate(userRoleSchema), controller.changeUserRole);
+module.exports = router;

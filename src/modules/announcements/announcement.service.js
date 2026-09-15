@@ -1,0 +1,10 @@
+const AppError = require("../../core/errors/AppError");
+const NotFoundError = require("../../core/errors/NotFoundError");
+const repository = require("./announcement.repository");
+const { isAdmin, audienceFor } = require("./announcement.utils");
+const getById = async (id) => { const item = await repository.findById(id); if (!item) throw new NotFoundError("Announcement not found"); return item; };
+const create = async (data, user) => { if (!isAdmin(user.role)) throw new AppError("Only administrators can create announcements.", 403, "ANNOUNCEMENT_ACCESS_DENIED"); return repository.create({ ...data, audience: data.audience || "ALL", published: false }); };
+const update = async (id, data, user) => { if (!isAdmin(user.role)) throw new AppError("Only administrators can update announcements.", 403, "ANNOUNCEMENT_ACCESS_DENIED"); await getById(id); return repository.update(id, data); };
+const publish = async (id, published, user) => { if (!isAdmin(user.role)) throw new AppError("Only administrators can publish announcements.", 403, "ANNOUNCEMENT_PUBLISH_DENIED"); await getById(id); return repository.update(id, { published }); };
+const list = async (query, user) => { const where = {}; if (isAdmin(user.role) && query.manage === "true") return repository.findAll(where); where.published = true; where.OR = [{ audience: "ALL" }, { audience: audienceFor(user.role) }]; const now = new Date(); where.AND = [{ OR: [{ publishAt: null }, { publishAt: { lte: now } }] }, { OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] }]; return repository.findAll(where); };
+module.exports = { create, update, publish, getById, list };

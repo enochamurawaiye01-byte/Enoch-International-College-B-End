@@ -1,0 +1,18 @@
+const { prisma } = require("../../config/database");
+const assignmentInclude = { student: { include: { currentClass: { include: { classLevel: true } } } }, position: true, class: { include: { classLevel: true } }, session: true, assigner: { select: { id: true, fullName: true, role: true } } };
+const createPosition = (data) => prisma.prefectPosition.create({ data });
+const findPosition = (id) => prisma.prefectPosition.findUnique({ where: { id } });
+const findPositionByName = (name) => prisma.prefectPosition.findUnique({ where: { name } });
+const listPositions = () => prisma.prefectPosition.findMany({ orderBy: { name: "asc" } });
+const findStudent = (id) => prisma.student.findUnique({ where: { id }, include: { currentClass: { include: { classLevel: true } } } });
+const findClass = (id) => prisma.class.findUnique({ where: { id }, include: { classLevel: true } });
+const findSession = (id) => prisma.academicSession.findUnique({ where: { id } });
+const findActiveByPosition = (positionId, sessionId, classId) => prisma.prefectAssignment.findFirst({ where: { positionId, sessionId, classId: classId || null, status: "ACTIVE" } });
+const findActiveByStudentPosition = (studentId, positionId, sessionId) => prisma.prefectAssignment.findFirst({ where: { studentId, positionId, sessionId, status: "ACTIVE" } });
+const findActiveByStudentScope = (studentId, sessionId, classId) => prisma.prefectAssignment.findFirst({ where: { studentId, sessionId, classId: classId || null, status: "ACTIVE" } });
+const findActiveByStudentPositionNames = (studentId, sessionId, names) => prisma.prefectAssignment.findFirst({ where: { studentId, sessionId, status: "ACTIVE", position: { name: { in: names } } } });
+const createAssignment = (data) => prisma.prefectAssignment.create({ data, include: assignmentInclude });
+const findAssignment = (id) => prisma.prefectAssignment.findUnique({ where: { id }, include: assignmentInclude });
+const listAssignments = (where) => prisma.prefectAssignment.findMany({ where, include: assignmentInclude, orderBy: { startDate: "desc" } });
+const updateAssignment = (id, data) => prisma.prefectAssignment.update({ where: { id }, data, include: assignmentInclude });
+module.exports = { createPosition, findPosition, findPositionByName, listPositions, findStudent, findClass, findSession, findActiveByPosition, findActiveByStudentPosition, findActiveByStudentScope, findActiveByStudentPositionNames, createAssignment, findAssignment, listAssignments, updateAssignment };

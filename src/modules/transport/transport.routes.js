@@ -1,0 +1,16 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./transport.controller");
+const { vehicleSchema, routeSchema, assignmentSchema } = require("./transport.validator");
+const router = express.Router();
+const managers = requireRoles("ADMIN", "SUPER_ADMIN", "STAFF");
+router.use(authenticate, managers);
+router.post("/vehicles", validate(vehicleSchema), controller.createVehicle);
+router.get("/vehicles", controller.getVehicles);
+router.post("/routes", validate(routeSchema), controller.createRoute);
+router.get("/routes", controller.getRoutes);
+router.post("/assignments", validate(assignmentSchema), controller.createAssignment);
+router.get("/assignments", controller.getAssignments);
+module.exports = router;

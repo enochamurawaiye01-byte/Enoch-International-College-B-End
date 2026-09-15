@@ -1,0 +1,14 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./teacher-attendance.controller");
+const { TEACHER_ATTENDANCE_ROLES } = require("./teacher-attendance.constants");
+const { attendanceSchema, updateAttendanceSchema } = require("./teacher-attendance.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...TEACHER_ATTENDANCE_ROLES));
+router.post("/", validate(attendanceSchema), controller.create);
+router.get("/", controller.getAll);
+router.get("/:id", controller.getById);
+router.patch("/:id", validate(updateAttendanceSchema), controller.update);
+module.exports = router;

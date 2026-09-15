@@ -1,0 +1,13 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./notification.controller");
+const { NOTIFICATION_ROLES } = require("./notification.constants");
+const { createNotificationSchema } = require("./notification.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...NOTIFICATION_ROLES));
+router.post("/", requireRoles("SUPER_ADMIN", "ADMIN"), validate(createNotificationSchema), controller.create);
+router.get("/", controller.list);
+router.patch("/:id/read", controller.markRead);
+module.exports = router;

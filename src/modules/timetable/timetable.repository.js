@@ -1,0 +1,18 @@
+const { prisma } = require("../../config/database");
+const include = { session: true, term: true, class: { include: { classLevel: true } }, slots: { include: { subject: true, staff: true }, orderBy: { startTime: "asc" } } };
+const findById = (id) => prisma.timetable.findUnique({ where: { id }, include });
+const findAll = (where) => prisma.timetable.findMany({ where, include, orderBy: { createdAt: "desc" } });
+const findSession = (id) => prisma.academicSession.findUnique({ where: { id } });
+const findTerm = (id) => prisma.term.findUnique({ where: { id } });
+const findClass = (id) => prisma.class.findUnique({ where: { id } });
+const findSubject = (id) => prisma.subject.findUnique({ where: { id } });
+const findStaff = (id) => prisma.staff.findUnique({ where: { id } });
+const findAssignment = (staffId, subjectId, classId, sessionId, termId) => prisma.teacherAssignment.findFirst({ where: { staffId, subjectId, classId, AND: [{ OR: [{ sessionId: null }, { sessionId }] }, { OR: [{ termId: null }, { termId }] }] } });
+const findSlotConflicts = (data, excludeId) => prisma.timetableSlot.findMany({ where: { id: excludeId ? { not: excludeId } : undefined, day: data.day, isActive: true, timetable: { sessionId: data.sessionId, termId: data.termId }, OR: [{ timetable: { classId: data.classId } }, ...(data.staffId ? [{ staffId: data.staffId }] : [])] } });
+const create = (data) => prisma.timetable.create({ data, include });
+const update = (id, data) => prisma.timetable.update({ where: { id }, data, include });
+const createSlot = (data) => prisma.timetableSlot.create({ data, include: { subject: true, staff: true } });
+const updateSlot = (id, data) => prisma.timetableSlot.update({ where: { id }, data, include: { subject: true, staff: true } });
+const findSlot = (id) => prisma.timetableSlot.findUnique({ where: { id }, include: { timetable: true } });
+const removeSlot = (id) => prisma.timetableSlot.delete({ where: { id } });
+module.exports = { findById, findAll, findSession, findTerm, findClass, findSubject, findStaff, findAssignment, findSlotConflicts, create, update, createSlot, updateSlot, findSlot, removeSlot };

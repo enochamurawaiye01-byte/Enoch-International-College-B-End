@@ -1,0 +1,13 @@
+const service = require("./website.service");
+const wrap = (action, status = 200) => async (req, res, next) => { try { return res.status(status).json({ success: true, data: await action(req) }); } catch (error) { next(error); } };
+const publicSettings = wrap((req) => service.publicSettings(req.user?.schoolId || req.query.schoolId));
+const settings = wrap((req) => service.settings(req.user.schoolId, req.user));
+const setSetting = wrap((req) => service.setSetting(req.user.schoolId, req.body, req.user));
+const publicPages = wrap((req) => service.publicPages(req.user?.schoolId || req.query.schoolId));
+const pages = wrap((req) => service.pages(req.user.schoolId, req.user));
+const getPage = wrap((req) => service.getPage(req.user?.schoolId || req.query.schoolId, req.params.slug, req.user));
+const createPage = wrap((req) => service.createPage(req.user.schoolId, req.body, req.user), 201);
+const updatePage = wrap((req) => service.updatePage(req.user.schoolId, req.params.slug, req.body, req.user));
+const saveSection = wrap((req) => service.saveSection(req.user.schoolId, req.params.slug, req.body, req.user));
+const removeSection = wrap((req) => service.removeSection(req.user.schoolId, req.params.slug, req.params.sectionId, req.user));
+module.exports = { publicSettings, settings, setSetting, publicPages, pages, getPage, createPage, updatePage, saveSection, removeSection };

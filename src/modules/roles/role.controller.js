@@ -1,0 +1,10 @@
+const service = require("./role.service");
+const create = async (req, res, next) => { try { return res.status(201).json({ success: true, data: await service.create(req.body, req.user.userId) }); } catch (error) { next(error); } };
+const getAll = async (req, res, next) => { try { return res.json({ success: true, data: await service.getAll() }); } catch (error) { next(error); } };
+const getById = async (req, res, next) => { try { return res.json({ success: true, data: await service.getById(req.params.id) }); } catch (error) { next(error); } };
+const update = async (req, res, next) => { try { return res.json({ success: true, data: await service.update(req.params.id, req.body, req.user.userId) }); } catch (error) { next(error); } };
+const remove = async (req, res, next) => { try { return res.json({ success: true, data: await service.remove(req.params.id, req.user.userId) }); } catch (error) { next(error); } };
+const assign = async (req, res, next) => { try { return res.json({ success: true, data: await service.assign(req.body, req.user.userId) }); } catch (error) { next(error); } };
+const revoke = async (req, res, next) => { try { return res.json({ success: true, data: await service.revoke(req.body, req.user.userId) }); } catch (error) { next(error); } };
+const changeUserRole = async (req, res, next) => { try { return res.json({ success: true, data: await service.changeUserRole(req.params.userId, req.body.role, req.user, req.user.userId) }); } catch (error) { next(error); } };
+module.exports = { create, getAll, getById, update, remove, assign, revoke, changeUserRole };

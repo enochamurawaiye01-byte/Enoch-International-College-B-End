@@ -1,0 +1,11 @@
+const { prisma } = require("../../config/database");
+const include = { staff: { include: { department: true } }, term: { include: { session: true } } };
+const findStaff = (id) => prisma.staff.findUnique({ where: { id } });
+const findStaffByUserId = (userId) => prisma.staff.findUnique({ where: { userId } });
+const findTerm = (id) => prisma.term.findUnique({ where: { id }, include: { session: true } });
+const findById = (id) => prisma.teacherAttendance.findUnique({ where: { id }, include });
+const findDuplicate = (staffId, date) => prisma.teacherAttendance.findUnique({ where: { staffId_date: { staffId, date } } });
+const create = (data) => prisma.teacherAttendance.create({ data, include });
+const update = (id, data) => prisma.teacherAttendance.update({ where: { id }, data, include });
+const findAll = (where) => prisma.teacherAttendance.findMany({ where, include, orderBy: [{ date: "desc" }, { createdAt: "desc" }] });
+module.exports = { findStaff, findStaffByUserId, findTerm, findById, findDuplicate, create, update, findAll };

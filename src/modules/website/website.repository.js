@@ -1,0 +1,10 @@
+const { prisma } = require("../../config/database");
+const findSettings = (schoolId, publicOnly) => prisma.websiteSetting.findMany({ where: { schoolId, ...(publicOnly ? { isPublic: true } : {}) }, orderBy: { key: "asc" } });
+const upsertSetting = (schoolId, data) => prisma.websiteSetting.upsert({ where: { schoolId_key: { schoolId, key: data.key } }, update: { value: data.value ?? null, isPublic: data.isPublic ?? true }, create: { schoolId, key: data.key, value: data.value ?? null, isPublic: data.isPublic ?? true } });
+const findPage = (schoolId, slug, publicOnly) => prisma.websitePage.findUnique({ where: { schoolId_slug: { schoolId, slug } }, include: { sections: { where: publicOnly ? { isActive: true } : undefined, orderBy: { sortOrder: "asc" } } } });
+const findPages = (schoolId, publicOnly) => prisma.websitePage.findMany({ where: { schoolId, ...(publicOnly ? { status: "PUBLISHED" } : {}) }, include: { sections: { where: publicOnly ? { isActive: true } : undefined, orderBy: { sortOrder: "asc" } } }, orderBy: { updatedAt: "desc" } });
+const createPage = (schoolId, data) => prisma.websitePage.create({ data: { ...data, schoolId }, include: { sections: true } });
+const updatePage = (schoolId, slug, data) => prisma.websitePage.update({ where: { schoolId_slug: { schoolId, slug } }, data, include: { sections: true } });
+const upsertSection = (pageId, data) => prisma.websiteSection.upsert({ where: { pageId_key: { pageId, key: data.key } }, update: data, create: { ...data, pageId } });
+const removeSection = (id) => prisma.websiteSection.delete({ where: { id } });
+module.exports = { findSettings, upsertSetting, findPage, findPages, createPage, updatePage, upsertSection, removeSection };

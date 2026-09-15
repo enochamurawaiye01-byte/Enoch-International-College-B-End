@@ -1,0 +1,11 @@
+const AppError = require("../../core/errors/AppError");
+const NotFoundError = require("../../core/errors/NotFoundError");
+const repository = require("./document.repository");
+const { isAdmin } = require("./document.utils");
+const { getFileUrl, removeStoredFile } = require("../../config/storage");
+const withSignedUrl = async (document) => ({ ...document, fileUrl: await getFileUrl(document.fileUrl) });
+const create = async (data, user) => { if (!isAdmin(user.role)) throw new AppError("Only administrators can upload student documents.", 403, "DOCUMENT_UPLOAD_DENIED"); if (!data.fileUrl) throw new AppError("Document URL or upload is required.", 422, "DOCUMENT_REQUIRED"); if (!await repository.findStudent(data.studentId)) throw new NotFoundError("Student not found"); return withSignedUrl(await repository.create(data)); };
+const list = async (query, user) => { let studentId = query.studentId; if (user.role === "STUDENT") { const student = await repository.findStudentByUserId(user.userId); studentId = student?.id; } if (!studentId) return isAdmin(user.role) ? Promise.all((await repository.findAll({})).map(withSignedUrl)) : []; if (!isAdmin(user.role) && user.role === "PARENT") return []; return Promise.all((await repository.findAll({ studentId })).map(withSignedUrl)); };
+const getById = async (id, user) => { const document = await repository.findById(id); if (!document) throw new NotFoundError("Document not found"); if (!isAdmin(user.role) && document.student.userId !== user.userId) throw new AppError("You cannot access this document.", 403, "DOCUMENT_ACCESS_DENIED"); return withSignedUrl(document); };
+const remove = async (id, user) => { if (!isAdmin(user.role)) throw new AppError("Only administrators can delete documents.", 403, "DOCUMENT_DELETE_DENIED"); const document = await repository.findById(id); if (!document) throw new NotFoundError("Document not found"); await removeStoredFile(document.fileUrl); return repository.remove(id); };
+module.exports = { create, list, getById, remove };

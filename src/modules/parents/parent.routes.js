@@ -1,0 +1,14 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./parent.controller");
+const { createParentSchema, linkParentStudentSchema } = require("./parent.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles("ADMIN", "SUPER_ADMIN"));
+router.post("/", validate(createParentSchema), controller.create);
+router.get("/", controller.getAll);
+router.get("/:id", controller.getById);
+router.post("/:id/students", validate(linkParentStudentSchema), controller.linkStudent);
+router.delete("/:id/students/:studentId", controller.unlinkStudent);
+module.exports = router;

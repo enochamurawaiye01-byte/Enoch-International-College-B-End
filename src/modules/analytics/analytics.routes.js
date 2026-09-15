@@ -1,0 +1,11 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./analytics.controller");
+const { ANALYTICS_ROLES } = require("./analytics.constants");
+const { analyticsQuerySchema } = require("./analytics.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...ANALYTICS_ROLES));
+router.get("/dashboard", controller.dashboard);
+module.exports = router;

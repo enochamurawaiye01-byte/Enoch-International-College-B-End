@@ -1,0 +1,13 @@
+const { prisma } = require("../../config/database");
+const findAll = () => prisma.role.findMany({ include: { permissions: { include: { permission: true } }, users: true }, orderBy: { name: "asc" } });
+const findById = (id) => prisma.role.findUnique({ where: { id }, include: { permissions: true, users: true } });
+const findByName = (name) => prisma.role.findUnique({ where: { name } });
+const create = (data) => prisma.role.create({ data });
+const update = (id, data) => prisma.role.update({ where: { id }, data });
+const remove = (id) => prisma.role.delete({ where: { id } });
+const assign = (data) => prisma.userRoleAssignment.upsert({ where: { userId_roleId: data }, update: {}, create: data });
+const revoke = (data) => prisma.userRoleAssignment.delete({ where: { userId_roleId: data } });
+const findUser = (id) => prisma.user.findUnique({ where: { id } });
+const countActiveSuperAdmins = () => prisma.user.count({ where: { role: "SUPER_ADMIN", status: "ACTIVE" } });
+const updateUserRole = (id, role) => prisma.user.update({ where: { id }, data: { role } });
+module.exports = { findAll, findById, findByName, create, update, remove, assign, revoke, findUser, countActiveSuperAdmins, updateUserRole };

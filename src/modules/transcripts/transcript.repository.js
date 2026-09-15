@@ -1,0 +1,3 @@
+const { prisma } = require("../../config/database");
+const findStudents = (where) => prisma.student.findMany({ where, include: { currentClass: { include: { classLevel: true } }, results: { where: { published: true }, include: { exam: { include: { subject: true } }, session: true, term: true }, orderBy: { generatedAt: "asc" } } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] });
+module.exports = { findStudents };

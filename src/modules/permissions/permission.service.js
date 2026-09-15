@@ -1,0 +1,13 @@
+const { prisma } = require("../../config/database");
+const AppError = require("../../core/errors/AppError");
+const NotFoundError = require("../../core/errors/NotFoundError");
+const repository = require("./permission.repository");
+const { audit } = require("./permission.utils");
+const getById = async (id) => { const permission = await repository.findById(id); if (!permission) throw new NotFoundError("Permission not found"); return permission; };
+const create = async (data, actorId) => { if (await repository.findByKey(data.key)) throw new AppError("Permission key already exists.", 409, "PERMISSION_EXISTS"); const permission = await repository.create(data); await audit(prisma, actorId, "PERMISSION_CREATED", "Permission", permission.id, `Created permission ${permission.key}`); return permission; };
+const getAll = () => repository.findAll();
+const update = async (id, data, actorId) => { await getById(id); const permission = await repository.update(id, data); await audit(prisma, actorId, "PERMISSION_UPDATED", "Permission", id, "Updated permission"); return permission; };
+const remove = async (id, actorId) => { const permission = await getById(id); if (permission.roles.length || permission.users.length) throw new AppError("Permission is assigned and cannot be deleted.", 409, "PERMISSION_IN_USE"); const deleted = await repository.remove(id); await audit(prisma, actorId, "PERMISSION_DELETED", "Permission", id, "Deleted permission"); return deleted; };
+const assign = async (data, actorId) => { if (data.roleId) await repository.assignRole({ roleId: data.roleId, permissionId: data.permissionId }); else await repository.assignUser({ userId: data.userId, permissionId: data.permissionId }); await audit(prisma, actorId, "PERMISSION_ASSIGNED", data.roleId ? "Role" : "User", data.roleId || data.userId, `Assigned permission ${data.permissionId}`); return { assigned: true }; };
+const revoke = async (data, actorId) => { try { if (data.roleId) await repository.revokeRole({ roleId: data.roleId, permissionId: data.permissionId }); else await repository.revokeUser({ userId: data.userId, permissionId: data.permissionId }); } catch (error) { if (error.code === "P2025") throw new NotFoundError("Permission assignment not found"); throw error; } await audit(prisma, actorId, "PERMISSION_REVOKED", data.roleId ? "Role" : "User", data.roleId || data.userId, `Revoked permission ${data.permissionId}`); return { revoked: true }; };
+module.exports = { create, getAll, getById, update, remove, assign, revoke };

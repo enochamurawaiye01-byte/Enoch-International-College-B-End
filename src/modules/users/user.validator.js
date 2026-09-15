@@ -1,0 +1,10 @@
+const { z } = require("zod");
+const uuid = z.string().uuid("Must be a valid ID.");
+const roles = ["SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER", "BURSAR", "TEACHER", "STAFF", "STUDENT", "PARENT"];
+const statuses = ["ACTIVE", "INACTIVE", "SUSPENDED", "DEACTIVATED"];
+const createUserSchema = z.object({ fullName: z.string().trim().min(2).max(100), email: z.string().email().max(254), phoneNumber: z.string().trim().max(30).nullable().optional(), password: z.string().min(8).max(128), role: z.enum(roles).default("STAFF"), status: z.enum(statuses).optional() }).strict();
+const updateUserSchema = z.object({ fullName: z.string().trim().min(2).max(100).optional(), phoneNumber: z.string().trim().max(30).nullable().optional(), status: z.enum(statuses).optional() }).strict().refine((data) => Object.keys(data).length > 0, "At least one field is required.");
+const roleSchema = z.object({ role: z.enum(roles) }).strict();
+const statusSchema = z.object({ status: z.enum(statuses) }).strict();
+const passwordSchema = z.object({ password: z.string().min(8).max(128) }).strict();
+module.exports = { createUserSchema, updateUserSchema, roleSchema, statusSchema, passwordSchema, uuid };

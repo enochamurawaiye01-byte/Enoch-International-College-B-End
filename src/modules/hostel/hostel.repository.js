@@ -1,0 +1,13 @@
+const { prisma } = require("../../config/database");
+const findHostel = (id) => prisma.hostel.findUnique({ where: { id }, include: { rooms: { include: { beds: { include: { allocations: { where: { status: "ACTIVE" } } } } } } } });
+const createHostel = (data) => prisma.hostel.create({ data });
+const findHostels = () => prisma.hostel.findMany({ include: { rooms: { include: { beds: { include: { allocations: { where: { status: "ACTIVE" } } } } } } }, orderBy: { name: "asc" } });
+const findRoom = (id) => prisma.hostelRoom.findUnique({ where: { id } });
+const createRoom = (data) => prisma.hostelRoom.create({ data });
+const findBed = (id) => prisma.hostelBed.findUnique({ where: { id }, include: { room: { include: { hostel: true } }, allocations: { where: { status: "ACTIVE" } } } });
+const createBed = (data) => prisma.hostelBed.create({ data });
+const findStudent = (id) => prisma.student.findUnique({ where: { id } });
+const createAllocation = (data) => prisma.$transaction(async (tx) => { const bed = await tx.hostelBed.findUnique({ where: { id: data.bedId }, include: { allocations: { where: { status: "ACTIVE" } } } }); if (!bed || bed.allocations.length) return null; return tx.hostelAllocation.create({ data, include: { bed: { include: { room: true } }, student: true } }); });
+const findAllocation = (id) => prisma.hostelAllocation.findUnique({ where: { id } });
+const checkout = (id, data) => prisma.hostelAllocation.update({ where: { id }, data: { status: "COMPLETED", checkOut: data.checkOut || new Date() } });
+module.exports = { findHostel, createHostel, findHostels, findRoom, createRoom, findBed, createBed, findStudent, createAllocation, findAllocation, checkout };

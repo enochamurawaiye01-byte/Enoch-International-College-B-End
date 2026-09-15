@@ -1,0 +1,16 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./hostel.controller");
+const schemas = require("./hostel.validator");
+const router = express.Router();
+const managers = requireRoles("ADMIN", "SUPER_ADMIN", "STAFF");
+router.use(authenticate, managers);
+router.post("/", validate(schemas.hostelSchema), controller.createHostel);
+router.get("/", controller.getHostels);
+router.post("/rooms", validate(schemas.roomSchema), controller.createRoom);
+router.post("/beds", validate(schemas.bedSchema), controller.createBed);
+router.post("/allocations", validate(schemas.allocationSchema), controller.allocate);
+router.patch("/allocations/:id/checkout", validate(schemas.checkoutSchema), controller.checkout);
+module.exports = router;

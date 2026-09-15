@@ -1,0 +1,13 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./medical.controller");
+const { profileSchema, visitSchema } = require("./medical.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles("ADMIN", "SUPER_ADMIN", "STAFF"));
+router.put("/profiles", validate(profileSchema), controller.saveProfile);
+router.get("/profiles/:studentId", controller.getProfile);
+router.post("/visits", validate(visitSchema), controller.createVisit);
+router.get("/visits", controller.getVisits);
+module.exports = router;

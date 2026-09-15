@@ -1,0 +1,17 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./permission.controller");
+const { PERMISSION_ROLES } = require("./permission.constants");
+const { createPermissionSchema, updatePermissionSchema, assignmentSchema } = require("./permission.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...PERMISSION_ROLES));
+router.post("/", validate(createPermissionSchema), controller.create);
+router.get("/", controller.getAll);
+router.get("/:id", controller.getById);
+router.patch("/:id", validate(updatePermissionSchema), controller.update);
+router.delete("/:id", controller.remove);
+router.post("/assign", validate(assignmentSchema), controller.assign);
+router.post("/revoke", validate(assignmentSchema), controller.revoke);
+module.exports = router;

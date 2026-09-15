@@ -1,0 +1,17 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./user.controller");
+const { USER_ADMIN_ROLES } = require("./user.constants");
+const { createUserSchema, updateUserSchema, roleSchema, statusSchema, passwordSchema } = require("./user.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...USER_ADMIN_ROLES));
+router.post("/", validate(createUserSchema), controller.create);
+router.get("/", controller.list);
+router.get("/:id", controller.getById);
+router.patch("/:id", validate(updateUserSchema), controller.update);
+router.patch("/:id/role", validate(roleSchema), controller.changeRole);
+router.patch("/:id/status", validate(statusSchema), controller.changeStatus);
+router.patch("/:id/password", validate(passwordSchema), controller.resetPassword);
+module.exports = router;

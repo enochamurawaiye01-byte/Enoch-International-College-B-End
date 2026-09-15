@@ -1,0 +1,14 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./teacher.controller");
+const { TEACHER_ROLES } = require("./teacher.constants");
+const { createTeacherSchema } = require("./teacher.validator");
+const router = express.Router();
+router.use(authenticate);
+router.post("/", requireRoles(...TEACHER_ROLES), validate(createTeacherSchema), controller.create);
+router.get("/me", requireRoles("TEACHER"), controller.getCurrent);
+router.get("/", requireRoles(...TEACHER_ROLES, "TEACHER"), controller.getAll);
+router.get("/:id", requireRoles(...TEACHER_ROLES, "TEACHER"), controller.getById);
+module.exports = router;

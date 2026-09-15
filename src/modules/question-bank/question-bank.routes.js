@@ -1,0 +1,14 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./question-bank.controller");
+const { createQuestionSchema, updateQuestionSchema } = require("./question-bank.validator");
+const router = express.Router();
+router.use(authenticate);
+router.post("/", requireRoles("TEACHER", "ADMIN", "SUPER_ADMIN"), validate(createQuestionSchema), controller.create);
+router.get("/", controller.getAll);
+router.get("/:id", controller.getById);
+router.patch("/:id", requireRoles("TEACHER", "ADMIN", "SUPER_ADMIN"), validate(updateQuestionSchema), controller.update);
+router.delete("/:id", requireRoles("TEACHER", "ADMIN", "SUPER_ADMIN"), controller.remove);
+module.exports = router;

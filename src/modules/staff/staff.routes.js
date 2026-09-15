@@ -1,0 +1,15 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./staff.controller");
+const { STAFF_ROLES } = require("./staff.constants");
+const { createStaffSchema, updateStaffSchema } = require("./staff.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...STAFF_ROLES));
+router.post("/", validate(createStaffSchema), controller.create);
+router.get("/", controller.getAll);
+router.get("/:id", controller.getById);
+router.patch("/:id", validate(updateStaffSchema), controller.update);
+router.delete("/:id", controller.remove);
+module.exports = router;

@@ -1,0 +1,17 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { upload } = require("../../core/middleware/upload.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./news.controller");
+const { ADMIN_ROLES } = require("./news.constants");
+const { createNewsSchema, updateNewsSchema, newsQuerySchema, publicationSchema } = require("./news.validator");
+const router = express.Router();
+router.get("/", controller.list);
+router.get("/:id", controller.getById);
+router.use(authenticate, requireRoles(...ADMIN_ROLES));
+router.post("/", upload.single("featuredImage"), validate(createNewsSchema), controller.create);
+router.patch("/:id", validate(updateNewsSchema), controller.update);
+router.patch("/:id/publication", validate(publicationSchema), controller.publish);
+router.delete("/:id", controller.remove);
+module.exports = router;

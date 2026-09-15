@@ -1,0 +1,10 @@
+const service = require("./timetable.service");
+const wrap = (action, status = 200) => async (req, res, next) => { try { return res.status(status).json({ success: true, data: await action(req) }); } catch (error) { next(error); } };
+const create = wrap((req) => service.create(req.body), 201);
+const update = wrap((req) => service.update(req.params.id, req.body));
+const getAll = wrap((req) => service.getAll(req.query));
+const getById = wrap((req) => service.getById(req.params.id));
+const createSlot = wrap((req) => service.saveSlot(req.params.id, req.body, req.user), 201);
+const updateSlot = wrap((req) => service.saveSlot(req.body.timetableId, req.body, req.user, req.params.slotId));
+const removeSlot = wrap((req) => service.removeSlot(req.params.slotId, req.user));
+module.exports = { create, update, getAll, getById, createSlot, updateSlot, removeSlot };

@@ -1,0 +1,15 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./report-card.controller");
+const { REPORT_CARD_ROLES } = require("./report-card.constants");
+const { createReportCardSchema, updateReportCardSchema, publicationSchema } = require("./report-card.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...REPORT_CARD_ROLES));
+router.post("/", validate(createReportCardSchema), controller.create);
+router.get("/", controller.getAll);
+router.get("/:id", controller.getById);
+router.patch("/:id", validate(updateReportCardSchema), controller.update);
+router.patch("/:id/publication", validate(publicationSchema), controller.publish);
+module.exports = router;

@@ -1,0 +1,13 @@
+const { prisma } = require("../../config/database");
+const findVehicle = (id) => prisma.transportVehicle.findUnique({ where: { id } });
+const findVehicleByRegistration = (registrationNumber) => prisma.transportVehicle.findUnique({ where: { registrationNumber } });
+const createVehicle = (data) => prisma.transportVehicle.create({ data });
+const findVehicles = () => prisma.transportVehicle.findMany({ include: { routes: true }, orderBy: { registrationNumber: "asc" } });
+const findRoute = (id) => prisma.transportRoute.findUnique({ where: { id } });
+const createRoute = (data) => prisma.transportRoute.create({ data, include: { vehicle: true, stops: true } });
+const findRoutes = () => prisma.transportRoute.findMany({ include: { vehicle: true, stops: true, assignments: true }, orderBy: { name: "asc" } });
+const findStudent = (id) => prisma.student.findUnique({ where: { id } });
+const findAssignment = (studentId, routeId) => prisma.transportAssignment.findUnique({ where: { studentId_routeId: { studentId, routeId } } });
+const createAssignment = (data) => prisma.transportAssignment.create({ data, include: { student: true, route: true, vehicle: true } });
+const findAssignments = () => prisma.transportAssignment.findMany({ include: { student: true, route: true, vehicle: true }, orderBy: { createdAt: "desc" } });
+module.exports = { findVehicle, findVehicleByRegistration, createVehicle, findVehicles, findRoute, createRoute, findRoutes, findStudent, findAssignment, createAssignment, findAssignments };

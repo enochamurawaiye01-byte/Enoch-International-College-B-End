@@ -1,0 +1,14 @@
+const AppError = require("../../core/errors/AppError");
+const NotFoundError = require("../../core/errors/NotFoundError");
+const repository = require("./gallery.repository");
+const { isAdmin } = require("./gallery.utils");
+const getAlbum = async (id) => { const album = await repository.findAlbum(id); if (!album) throw new NotFoundError("Gallery album not found"); return album; };
+const createAlbum = async (data, user) => { if (!isAdmin(user.role)) throw new AppError("Only administrators can create albums.", 403, "GALLERY_ACCESS_DENIED"); if (await repository.findSlug(data.slug)) throw new AppError("Album slug already exists.", 409, "ALBUM_SLUG_EXISTS"); return repository.createAlbum({ ...data, schoolId: user.schoolId || null, status: "DRAFT" }); };
+const updateAlbum = async (id, data, user) => { if (!isAdmin(user.role)) throw new AppError("Only administrators can update albums.", 403, "GALLERY_ACCESS_DENIED"); await getAlbum(id); return repository.updateAlbum(id, data); };
+const publishAlbum = async (id, published, user) => { if (!isAdmin(user.role)) throw new AppError("Only administrators can publish albums.", 403, "GALLERY_PUBLISH_DENIED"); await getAlbum(id); return repository.updateAlbum(id, { status: published ? "PUBLISHED" : "DRAFT" }); };
+const removeAlbum = async (id, user) => { if (!isAdmin(user.role)) throw new AppError("Only administrators can delete albums.", 403, "GALLERY_DELETE_DENIED"); await getAlbum(id); return repository.removeAlbum(id); };
+const list = (manage) => repository.findAlbums(manage ? {} : { status: "PUBLISHED" });
+const addImage = async (albumId, data, user) => { if (!isAdmin(user.role)) throw new AppError("Only administrators can add gallery images.", 403, "GALLERY_ACCESS_DENIED"); await getAlbum(albumId); if (!data.imageUrl) throw new AppError("Image URL or upload is required.", 422, "IMAGE_REQUIRED"); return repository.createImage({ ...data, albumId }); };
+const updateImage = async (id, data, user) => { if (!isAdmin(user.role)) throw new AppError("Only administrators can update gallery images.", 403, "GALLERY_ACCESS_DENIED"); const image = await repository.findImage(id); if (!image) throw new NotFoundError("Gallery image not found"); return repository.updateImage(id, data); };
+const removeImage = async (id, user) => { if (!isAdmin(user.role)) throw new AppError("Only administrators can delete gallery images.", 403, "GALLERY_DELETE_DENIED"); const image = await repository.findImage(id); if (!image) throw new NotFoundError("Gallery image not found"); return repository.removeImage(id); };
+module.exports = { createAlbum, updateAlbum, publishAlbum, removeAlbum, getAlbum, list, addImage, updateImage, removeImage };

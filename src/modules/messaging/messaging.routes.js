@@ -1,0 +1,14 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./messaging.controller");
+const { MESSAGING_ROLES } = require("./messaging.constants");
+const { sendMessageSchema } = require("./messaging.validator");
+const router = express.Router();
+router.use(authenticate, requireRoles(...MESSAGING_ROLES));
+router.post("/", validate(sendMessageSchema), controller.send);
+router.get("/inbox", controller.inbox);
+router.get("/sent", controller.sent);
+router.patch("/:id/read", controller.markRead);
+module.exports = router;

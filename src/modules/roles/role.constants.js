@@ -1,0 +1,3 @@
+const ROLE_ROLES = Object.freeze(["SUPER_ADMIN", "ADMIN"]);
+const SYSTEM_ROLES = Object.freeze(["SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER", "BURSAR", "TEACHER", "STAFF", "STUDENT", "PARENT"]);
+module.exports = { ROLE_ROLES, SYSTEM_ROLES };

@@ -1,0 +1,11 @@
+const AppError = require("../../core/errors/AppError");
+const NotFoundError = require("../../core/errors/NotFoundError");
+const repository = require("./library.repository");
+const { LIBRARY_ERRORS: ERRORS } = require("./library.constants");
+const createBook = (data) => repository.createBook(data);
+const getBooks = (query) => { const where = {}; if (query.category) where.category = query.category; if (query.search) where.OR = [{ title: { contains: query.search, mode: "insensitive" } }, { author: { contains: query.search, mode: "insensitive" } }]; return repository.findBooks(where); };
+const createCopy = async (data) => { if (!await repository.findBook(data.bookId)) throw new NotFoundError(ERRORS.BOOK_NOT_FOUND); if (await repository.findCopyByCode(data.copyCode)) throw new AppError(ERRORS.COPY_CODE_EXISTS, 409, "COPY_CODE_EXISTS"); return repository.createCopy(data); };
+const issueLoan = async (data) => { if (!await repository.findCopy(data.copyId)) throw new NotFoundError(ERRORS.COPY_NOT_FOUND); const loan = await repository.createLoan({ ...data, studentId: data.studentId || null, staffId: data.staffId || null }); if (!loan) throw new AppError(ERRORS.COPY_UNAVAILABLE, 409, "COPY_UNAVAILABLE"); return loan; };
+const returnLoan = async (id, data) => { const loan = await repository.findLoan(id); if (!loan) throw new NotFoundError(ERRORS.LOAN_NOT_FOUND); if (loan.status === "RETURNED") throw new AppError("Loan has already been returned.", 409, "LOAN_RETURNED"); return repository.returnLoan(id, { returnDate: data.returnDate || new Date(), fine: data.fine || 0 }); };
+const getLoans = (query) => { const where = {}; if (query.status) where.status = query.status; if (query.studentId) where.studentId = query.studentId; if (query.staffId) where.staffId = query.staffId; return repository.findLoans(where); };
+module.exports = { createBook, getBooks, createCopy, issueLoan, returnLoan, getLoans };

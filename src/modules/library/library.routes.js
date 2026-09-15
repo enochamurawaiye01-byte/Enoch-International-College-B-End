@@ -1,0 +1,16 @@
+const express = require("express");
+const authenticate = require("../../core/middleware/auth.middleware");
+const validate = require("../../core/middleware/validation.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const controller = require("./library.controller");
+const { createBookSchema, createCopySchema, issueLoanSchema, returnLoanSchema } = require("./library.validator");
+const router = express.Router();
+const libraryManagers = requireRoles("ADMIN", "SUPER_ADMIN", "STAFF");
+router.use(authenticate);
+router.get("/books", controller.getBooks);
+router.post("/books", libraryManagers, validate(createBookSchema), controller.createBook);
+router.post("/copies", libraryManagers, validate(createCopySchema), controller.createCopy);
+router.post("/loans", libraryManagers, validate(issueLoanSchema), controller.issueLoan);
+router.get("/loans", libraryManagers, controller.getLoans);
+router.patch("/loans/:id/return", libraryManagers, validate(returnLoanSchema), controller.returnLoan);
+module.exports = router;

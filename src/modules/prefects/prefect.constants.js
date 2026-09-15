@@ -1,0 +1,2 @@
+const PREFECT_ROLES = Object.freeze(["SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"]);
+module.exports = { PREFECT_ROLES };
