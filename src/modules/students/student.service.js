@@ -4,6 +4,7 @@ const { prisma } = require("../../config/database");
 const { hashPassword } = require("../../core/utils/hash");
 const generateRegistrationNumber = require("../../core/utils/generate-registration-number");
 const AppError = require("../../core/errors/AppError");
+const { uploadFile } = require("../../config/storage");
 
 const getStudentByUserId = async (userId) => {
     const student = await repository.findByUserId(userId);
@@ -52,6 +53,13 @@ const createStudent = async (data, schoolId) => {
 const getAllStudents = () => repository.findAll();
 const getStudentById = async (id) => { const student = await repository.findById(id); if (!student) throw new NotFoundError("Student not found"); return student; };
 const updateStudent = async (id, data) => { await getStudentById(id); if (data.currentClassId) { const schoolClass = await repository.findClassById(data.currentClassId); if (!schoolClass || !schoolClass.isActive) throw new AppError("Active class not found.", 404, "CLASS_NOT_FOUND"); } return repository.updateStudent(id, data); };
+const updateProfileImage = async (userId, file) => {
+    const student = await repository.findByUserId(userId);
+    if (!student) throw new NotFoundError("Student profile not found");
+    if (!file) throw new AppError("A profile image is required.", 422, "PROFILE_IMAGE_REQUIRED");
+    const stored = await uploadFile({ file, folder: `students/${student.id}` });
+    return repository.updateProfileImage(student.id, stored.url);
+};
 
 module.exports = {
     getStudentByUserId,
@@ -60,4 +68,5 @@ module.exports = {
     getAllStudents,
     getStudentById,
     updateStudent,
+    updateProfileImage,
 };

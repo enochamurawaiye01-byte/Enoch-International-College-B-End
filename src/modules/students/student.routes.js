@@ -5,6 +5,7 @@ const authenticate = require("../../core/middleware/auth.middleware");
 const validate = require("../../core/middleware/validation.middleware");
 const { requireRoles } = require("../../core/middleware/authorization.middleware");
 const { createStudentSchema, updateStudentSchema } = require("./student.validator");
+const { upload } = require("../../core/middleware/upload.middleware");
 
 const router = express.Router();
 
@@ -13,6 +14,8 @@ router.get(
     authenticate,
     controller.getMyProfile
 );
+
+router.post("/me/profile-picture", authenticate, upload.single("file"), controller.updateProfileImage);
 
 const adminOnly = requireRoles("ADMIN", "SUPER_ADMIN");
 router.post("/", authenticate, adminOnly, validate(createStudentSchema), controller.createStudent);

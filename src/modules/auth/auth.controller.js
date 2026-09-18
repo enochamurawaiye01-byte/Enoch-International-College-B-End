@@ -29,6 +29,27 @@ const login = async (req, res, next) => {
     }
 };
 
+const forgotPassword = async (req, res, next) => {
+    try {
+        await authService.forgotPassword(req.body.email);
+        res.status(200).json({
+            success: true,
+            message: "If an account matches that email, a password reset link has been sent.",
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const resetPassword = async (req, res, next) => {
+    try {
+        const result = await authService.resetPassword(req.body);
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+};
+
 const logout = async (req, res, next) => {
     try {
         const result = await authService.logout(req.token);
@@ -70,6 +91,8 @@ const changePassword = async (req, res, next) => {
 module.exports = {
     register,
     login,
+    forgotPassword,
+    resetPassword,
     logout,
     getCurrentUser,
     changePassword,

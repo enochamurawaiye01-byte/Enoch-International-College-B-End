@@ -2,8 +2,11 @@
 const jwt = require('jsonwebtoken');
 
 const generateAccessToken = (payload) => {
+  const expiresIn = payload.role === 'SUPER_ADMIN'
+    ? '15m'
+    : (process.env.JWT_EXPIRES_IN || '1d');
   return jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '1d',
+    expiresIn,
   });
 };
 

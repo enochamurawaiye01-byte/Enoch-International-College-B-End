@@ -15,7 +15,7 @@ const startServer = async () => {
   if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) await initializeStorage();
   const server = app.listen(PORT, () => {
     console.log(`School ERP API running on port ${PORT}`);
-    console.log(`Health check: http://localhost:${PORT}/health`);
+    console.log(` Enoch's School: http://localhost:${PORT}/health`);
     startJobRunner();
   });
   return server;

@@ -4,6 +4,7 @@ const classController = require("./class.controller");
 
 const validate = require("../../core/middleware/validation.middleware");
 const authenticate = require("../../core/middleware/auth.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
 
 const {
     createClassSchema,
@@ -18,6 +19,7 @@ router.use(authenticate);
 // Create class
 router.post(
     "/",
+    requireRoles("SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"),
     validate(createClassSchema),
     classController.createClass
 );
@@ -37,6 +39,7 @@ router.get(
 // Update class
 router.patch(
     "/:id",
+    requireRoles("SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"),
     validate(updateClassSchema),
     classController.updateClass
 );
@@ -44,6 +47,7 @@ router.patch(
 // Delete class
 router.delete(
     "/:id",
+    requireRoles("SUPER_ADMIN", "ADMIN"),
     classController.deleteClass
 );
 

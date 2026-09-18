@@ -11,6 +11,8 @@ const AuthError = require("../../core/errors/AuthError");
 const AppError = require("../../core/errors/AppError");
 const studentService = require("../students/student.service");
 const generateRegistrationNumber = require("../../core/utils/generate-registration-number");
+const jwt = require("jsonwebtoken");
+const { sendPasswordResetEmail } = require("../../config/mailer");
 
 const sanitizeUser = (user) => {
     if (!user) return null;
@@ -28,9 +30,14 @@ const register = async (data) => {
         email,
         phoneNumber,
         password,
+        role = "STUDENT",
+        staffNumber,
+        jobTitle,
+        qualification,
     } = data;
 
     const normalizedEmail = email.toLowerCase().trim();
+    if (!["STUDENT", "TEACHER"].includes(role)) throw new AuthError("Only student and teacher applications are accepted here", 403, "REGISTRATION_ROLE_NOT_ALLOWED");
 
     const existingUser = await repository.findUserByEmail(normalizedEmail);
 
@@ -55,8 +62,8 @@ const register = async (data) => {
                 email: normalizedEmail,
                 phoneNumber: phoneNumber || null,
                 passwordHash,
-                role: "STUDENT",
-                status: "ACTIVE",
+                role,
+                status: "INACTIVE",
             },
         });
 
@@ -67,7 +74,7 @@ const register = async (data) => {
         new Date()
     );
 
-        const student = await tx.student.create({
+        const student = role === "STUDENT" ? await tx.student.create({
             data: {
                 userId: user.id,
                 registrationNumber,
@@ -75,19 +82,36 @@ const register = async (data) => {
                 middleName: middleName || null,
                 lastName,
                 admissionDate: new Date(),
-                status: "ACTIVE",
+                status: "INACTIVE",
             },
-        });
+        }) : null;
+
+        const staff = role === "TEACHER" ? await tx.staff.create({
+            data: {
+                userId: user.id,
+                staffNumber,
+                firstName,
+                middleName: middleName || null,
+                lastName,
+                jobTitle: jobTitle || "Teacher",
+                qualification: qualification || null,
+                status: "INACTIVE",
+                employmentType: "FULL_TIME",
+            },
+        }) : null;
 
         return {
             user,
             student,
+            staff,
         };
     });
 
     return {
         user: sanitizeUser(result.user),
         student: result.student,
+        staff: result.staff,
+        pendingApproval: true,
     };
 };
 
@@ -172,6 +196,57 @@ const login = async ({ email, password }) => {
         tokenType: AUTH.TOKEN.TYPE,
         expiresAt,
     };
+};
+
+const forgotPassword = async (email) => {
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await repository.findUserByEmail(normalizedEmail);
+
+    if (!user) return;
+
+    const token = jwt.sign(
+        { userId: user.id, email: normalizedEmail, purpose: "password-reset" },
+        process.env.JWT_SECRET,
+        { expiresIn: "15m" }
+    );
+    const frontendBase = (process.env.FRONTEND_URL || "http://localhost:3000").split(",")[0].trim().replace(/\/$/, "");
+    const resetUrl = `${process.env.FRONTEND_RESET_URL || `${frontendBase}/reset-password.html`}?token=${encodeURIComponent(token)}`;
+
+    try {
+        await sendPasswordResetEmail({ to: normalizedEmail, resetUrl });
+    } catch (error) {
+        throw new AppError(
+            "Password reset email service is not configured or unavailable",
+            503,
+            "EMAIL_SERVICE_UNAVAILABLE"
+        );
+    }
+};
+
+const resetPassword = async ({ token, password }) => {
+    let payload;
+    try {
+        payload = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (error) {
+        throw new AuthError("This reset link is invalid or expired", 400, "INVALID_RESET_TOKEN");
+    }
+
+    if (payload.purpose !== "password-reset") {
+        throw new AuthError("This reset link is invalid or expired", 400, "INVALID_RESET_TOKEN");
+    }
+
+    const user = await repository.findUserById(payload.userId);
+    if (!user || user.email !== payload.email) {
+        throw new AuthError("This reset link is invalid or expired", 400, "INVALID_RESET_TOKEN");
+    }
+
+    await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash: await hashPassword(password) },
+    });
+    await repository.deleteAllUserSessions(user.id);
+
+    return { success: true, message: "Password reset successfully. You can now sign in." };
 };
 
 const logout = async (token) => {
@@ -269,6 +344,8 @@ const verifyToken = (token) => {
 module.exports = {
     register,
     login,
+    forgotPassword,
+    resetPassword,
     logout,
     getCurrentUser,
     changePassword,

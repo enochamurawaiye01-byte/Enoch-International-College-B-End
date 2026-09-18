@@ -1,12 +1,13 @@
 const { prisma } = require("./src/config/database");
 const { hashPassword } = require("./src/core/utils/hash");
 
-const EMAIL = "enochamurawaiye01@gmail.com";
-const NEW_PASSWORD = "ChangeMe@2026";
+const EMAIL = process.env.ADMIN_EMAIL?.toLowerCase().trim();
+const NEW_PASSWORD = process.env.ADMIN_PASSWORD;
 
 const resetPassword = async () => {
     try {
-        const normalizedEmail = EMAIL.toLowerCase().trim();
+        if (!EMAIL || !NEW_PASSWORD) throw new Error("ADMIN_EMAIL and ADMIN_PASSWORD environment variables are required.");
+        const normalizedEmail = EMAIL;
 
         const user = await prisma.user.findUnique({
             where: {
@@ -33,7 +34,6 @@ const resetPassword = async () => {
         console.log("=================================");
         console.log("PASSWORD RESET SUCCESSFUL");
         console.log("Email:", normalizedEmail);
-        console.log("New password:", NEW_PASSWORD);
         console.log("=================================");
     } catch (error) {
         console.error("Password reset failed:");

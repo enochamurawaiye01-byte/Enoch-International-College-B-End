@@ -76,6 +76,10 @@ const phoneSchema = z
   .max(20)
   .optional();
 
+const optionalPhoneSchema = z.preprocess((value) => value === "" ? undefined : value, phoneSchema);
+const optionalMiddleNameSchema = z.preprocess((value) => value === "" ? undefined : value, middleNameSchema);
+const optionalText = (schema) => z.preprocess((value) => value === "" ? undefined : value, schema.optional());
+
 /*
 |--------------------------------------------------------------------------
 | LOGIN
@@ -103,12 +107,16 @@ const loginSchema = z
 const registerSchema = z
   .object({
     firstName: firstNameSchema,
-    middleName: middleNameSchema,
+    middleName: optionalMiddleNameSchema,
     lastName: lastNameSchema,
     email: emailSchema,
-    phoneNumber: phoneSchema,
+    phoneNumber: optionalPhoneSchema,
     password: passwordSchema,
     confirmPassword: z.string(),
+    role: z.enum(["STUDENT", "TEACHER"]).default("STUDENT"),
+    staffNumber: optionalText(z.string().trim().min(2).max(50)),
+    jobTitle: optionalText(z.string().trim().max(120)),
+    qualification: optionalText(z.string().trim().max(300)),
   })
   .strict()
   .refine(
@@ -116,6 +124,13 @@ const registerSchema = z
     {
       message: "Passwords do not match",
       path: ["confirmPassword"],
+    }
+  )
+  .refine(
+    (data) => data.role !== "TEACHER" || Boolean(data.staffNumber),
+    {
+      message: "Staff number is required for teacher registration",
+      path: ["staffNumber"],
     }
   );
 

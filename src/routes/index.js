@@ -54,6 +54,7 @@ const websiteRoutes = require("../modules/website/website.routes");
 const analyticsRoutes = require("../modules/analytics/analytics.routes");
 const userRoutes = require("../modules/users/user.routes");
 const settingRoutes = require("../modules/settings/setting.routes");
+const dashboardRoutes = require("../modules/dashboards/dashboard.routes");
 const router = express.Router();
 
 router.use("/auth", authRoutes);
@@ -110,4 +111,5 @@ router.use("/website", websiteRoutes);
 router.use("/analytics", analyticsRoutes);
 router.use("/users", userRoutes);
 router.use("/settings", settingRoutes);
+router.use("/dashboard", dashboardRoutes);
 module.exports = router;

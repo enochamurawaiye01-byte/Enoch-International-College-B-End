@@ -14,13 +14,22 @@ const app = express();
 // Security
 app.use(helmet());
 
-// CORS
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
-    credentials: true,
-  })
-);
+// CORS accepts a comma-separated FRONTEND_URL list for local and hosted clients.
+const configuredOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || configuredOrigins.includes(origin)) return callback(null, true);
+    if (/^https?:\/\/localhost:\d+$/.test(origin) || /^https?:\/\/127\.0\.0\.1:\d+$/.test(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error("CORS origin is not allowed"));
+  },
+  credentials: true,
+}));
 
 // Body parsers
 app.use(express.json({
@@ -46,6 +55,9 @@ app.get("/health", (req, res) => {
     message: "School ERP API is running",
     timestamp: new Date().toISOString(),
   });
+});
+app.get("/api-version", (_req, res) => {
+  res.json({ success: true, apiPrefix: "/api", loginEndpoint: "/api/auth/login", loginContract: "email-password" });
 });
 app.use("/api", routes);
 

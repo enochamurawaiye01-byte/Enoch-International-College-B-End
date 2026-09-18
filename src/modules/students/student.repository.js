@@ -51,6 +51,11 @@ const findById = async (id) => prisma.student.findUnique({ where: { id }, includ
 const findAll = async () => prisma.student.findMany({ include: { user: { select: userSelect }, currentClass: { include: { classLevel: true } } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] });
 const findUserByEmail = async (email) => prisma.user.findUnique({ where: { email } });
 const findClassById = async (id) => prisma.class.findUnique({ where: { id } });
+const updateProfileImage = async (studentId, profileImageUrl) => prisma.student.update({
+    where: { id: studentId },
+    data: { profileImageUrl },
+    include: { user: { select: userSelect }, currentClass: { include: { classLevel: true } } },
+});
 
 module.exports = {
     findByRegistrationNumber,
@@ -60,4 +65,5 @@ module.exports = {
     findAll,
     findUserByEmail,
     findClassById,
+    updateProfileImage,
 };

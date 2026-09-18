@@ -7,6 +7,8 @@ const authenticate = require("../../core/middleware/auth.middleware");
 const {
     loginSchema,
     registerSchema,
+    forgotPasswordSchema,
+    resetPasswordSchema,
     changePasswordSchema,
 } = require("./auth.validator");
 
@@ -22,6 +24,18 @@ router.post(
     "/login",
     validate(loginSchema),
     controller.login
+);
+
+router.post(
+    "/forgot-password",
+    validate(forgotPasswordSchema),
+    controller.forgotPassword
+);
+
+router.post(
+    "/reset-password",
+    validate(resetPasswordSchema),
+    controller.resetPassword
 );
 
 router.post(

@@ -3,6 +3,7 @@ const express = require("express");
 const termController = require("./term.controller");
 const validate = require("../../core/middleware/validation.middleware");
 const authenticate = require("../../core/middleware/auth.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
 
 const {
     createTermSchema,
@@ -16,6 +17,7 @@ router.use(authenticate);
 // Create a term for an academic session
 router.post(
     "/sessions/:sessionId",
+    requireRoles("SUPER_ADMIN", "ADMIN"),
     validate(createTermSchema),
     termController.createTerm
 );
@@ -35,6 +37,7 @@ router.get(
 // Update a term
 router.patch(
     "/:id",
+    requireRoles("SUPER_ADMIN", "ADMIN"),
     validate(updateTermSchema),
     termController.updateTerm
 );
@@ -42,16 +45,19 @@ router.patch(
 // Activate a term
 router.patch(
     "/:id/activate",
+    requireRoles("SUPER_ADMIN", "ADMIN"),
     termController.activateTerm
 );
 
 router.patch(
     "/:id/close",
+    requireRoles("SUPER_ADMIN", "ADMIN"),
     termController.closeTerm
 );
 // Delete a term
 router.delete(
     "/:id",
+    requireRoles("SUPER_ADMIN", "ADMIN"),
     termController.deleteTerm
 );
 
