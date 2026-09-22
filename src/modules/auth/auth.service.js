@@ -36,6 +36,13 @@ const register = async (data) => {
         qualification,
         childRegistrationNumber,
         relationship,
+        dateOfBirth,
+        gender,
+        address,
+        nationality,
+        stateOfOrigin,
+        localGovernment,
+        occupation,
     } = data;
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -89,18 +96,26 @@ const register = async (data) => {
                 firstName,
                 middleName: middleName || null,
                 lastName,
+                dateOfBirth: dateOfBirth || null,
+                gender: gender || null,
+                address: address || null,
+                nationality: nationality || null,
+                stateOfOrigin: stateOfOrigin || null,
+                localGovernment: localGovernment || null,
                 admissionDate: new Date(),
                 status: "INACTIVE",
             },
         }) : null;
 
         const parent = role === "PARENT" ? await tx.parent.create({
-            data: { userId: user.id, firstName, lastName, relationship: relationship || null },
+            data: { userId: user.id, firstName, middleName: middleName || null, lastName, relationship: relationship || null, occupation: occupation || null, address: address || null },
         }) : null;
 
         if (parent) await tx.parentStudent.create({
             data: { parentId: parent.id, studentId: child.id, relationship: relationship || null, isPrimary: true },
         });
+
+        await tx.auditLog.create({ data: { userId: user.id, action: "CREATE", entity: "Application", entityId: user.id, description: `${role} application submitted by ${fullName}` } });
 
         const staff = role === "TEACHER" ? await tx.staff.create({
             data: {
@@ -111,6 +126,9 @@ const register = async (data) => {
                 lastName,
                 jobTitle: jobTitle || "Teacher",
                 qualification: qualification || null,
+                dateOfBirth: dateOfBirth || null,
+                gender: gender || null,
+                address: address || null,
                 status: "INACTIVE",
                 employmentType: "FULL_TIME",
             },
@@ -123,6 +141,9 @@ const register = async (data) => {
             parent,
         };
     });
+
+    const administrators = await prisma.user.findMany({ where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, status: "ACTIVE" }, select: { id: true } });
+    if (administrators.length) await prisma.notification.createMany({ data: administrators.map(({ id }) => ({ userId: id, type: "SYSTEM", title: "New application received", message: `${fullName} submitted a ${role.toLowerCase()} application for approval.` })) });
 
     return {
         user: sanitizeUser(result.user),

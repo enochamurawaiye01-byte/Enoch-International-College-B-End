@@ -72,8 +72,7 @@ const lastNameSchema = z
 const phoneSchema = z
   .string()
   .trim()
-  .min(7)
-  .max(20)
+  .regex(/^\+[1-9]\d{7,14}$/, "Phone number must use international format, for example +2348012345678")
   .optional();
 
 const optionalPhoneSchema = z.preprocess((value) => value === "" ? undefined : value, phoneSchema);
@@ -110,7 +109,14 @@ const registerSchema = z
     middleName: optionalMiddleNameSchema,
     lastName: lastNameSchema,
     email: emailSchema,
-    phoneNumber: optionalPhoneSchema,
+    phoneNumber: z.string().trim().regex(/^\+[1-9]\d{7,14}$/, "Phone number must use international format, for example +2348012345678"),
+    dateOfBirth: z.preprocess((value) => value === "" ? undefined : value, z.coerce.date().optional()),
+    gender: z.enum(["MALE", "FEMALE", "OTHER"]).optional(),
+    address: optionalText(z.string().trim().max(500)),
+    nationality: optionalText(z.string().trim().max(80)),
+    stateOfOrigin: optionalText(z.string().trim().max(80)),
+    localGovernment: optionalText(z.string().trim().max(80)),
+    occupation: optionalText(z.string().trim().max(120)),
     password: passwordSchema,
     confirmPassword: z.string(),
     role: z.enum(["STUDENT", "TEACHER", "PARENT"]).default("STUDENT"),
