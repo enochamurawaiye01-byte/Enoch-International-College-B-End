@@ -5,6 +5,7 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const cookieParser = require("cookie-parser");
 const path = require("path");
+const { corsOptions } = require("./config/cors");
 require("dotenv").config();
 const routes = require("./routes");
 const errorHandler = require("./core/errors/error-handler");
@@ -14,22 +15,7 @@ const app = express();
 // Security
 app.use(helmet());
 
-// CORS accepts a comma-separated FRONTEND_URL list for local and hosted clients.
-const configuredOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || configuredOrigins.includes(origin)) return callback(null, true);
-    if (/^https?:\/\/localhost:\d+$/.test(origin) || /^https?:\/\/127\.0\.0\.1:\d+$/.test(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error("CORS origin is not allowed"));
-  },
-  credentials: true,
-}));
+app.use(cors(corsOptions));
 
 // Body parsers
 app.use(express.json({

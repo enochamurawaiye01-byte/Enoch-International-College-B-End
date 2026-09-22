@@ -5,6 +5,8 @@ const { requireRoles } = require("../../core/middleware/authorization.middleware
 const controller = require("./parent.controller");
 const { createParentSchema, linkParentStudentSchema } = require("./parent.validator");
 const router = express.Router();
+router.get("/me/children", authenticate, requireRoles("PARENT"), controller.getMyChildren);
+router.get("/me/children/:studentId", authenticate, requireRoles("PARENT"), controller.getMyChild);
 router.use(authenticate, requireRoles("ADMIN", "SUPER_ADMIN"));
 router.post("/", validate(createParentSchema), controller.create);
 router.get("/", controller.getAll);

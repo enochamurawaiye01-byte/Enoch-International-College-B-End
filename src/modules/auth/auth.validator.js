@@ -113,10 +113,12 @@ const registerSchema = z
     phoneNumber: optionalPhoneSchema,
     password: passwordSchema,
     confirmPassword: z.string(),
-    role: z.enum(["STUDENT", "TEACHER"]).default("STUDENT"),
+    role: z.enum(["STUDENT", "TEACHER", "PARENT"]).default("STUDENT"),
     staffNumber: optionalText(z.string().trim().min(2).max(50)),
     jobTitle: optionalText(z.string().trim().max(120)),
     qualification: optionalText(z.string().trim().max(300)),
+    childRegistrationNumber: optionalText(z.string().trim().min(2).max(50)),
+    relationship: optionalText(z.string().trim().max(50)),
   })
   .strict()
   .refine(
@@ -125,6 +127,10 @@ const registerSchema = z
       message: "Passwords do not match",
       path: ["confirmPassword"],
     }
+  )
+  .refine(
+    (data) => data.role !== "PARENT" || Boolean(data.childRegistrationNumber),
+    { message: "Child registration number is required for parent registration", path: ["childRegistrationNumber"] }
   )
   .refine(
     (data) => data.role !== "TEACHER" || Boolean(data.staffNumber),

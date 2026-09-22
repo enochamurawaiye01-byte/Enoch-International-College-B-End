@@ -35,7 +35,7 @@ const resetPassword = async () => {
         console.log("PASSWORD RESET SUCCESSFUL");
         console.log("Email:", normalizedEmail);
         console.log("=================================");
-    } catch (error) {
+    } catch (error) {   
         console.error("Password reset failed:");
         console.error(error);
     } finally {

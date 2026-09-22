@@ -1,10 +1,14 @@
 const { prisma } = require("../../config/database");
 const include = { parentLinks: { include: { student: { include: { currentClass: true } } } }, user: { select: { id: true, email: true, phoneNumber: true, status: true } } };
 const findById = (id) => prisma.parent.findUnique({ where: { id }, include });
+const findByUserId = (userId) => prisma.parent.findUnique({ where: { userId }, include });
+const findChildForParent = (userId, studentId) => prisma.parentStudent.findFirst({ where: { studentId, parent: { userId } }, include: { student: { include: { user: { select: { email: true, phoneNumber: true } }, currentClass: { include: { classLevel: true } } } } } });
 const findAll = () => prisma.parent.findMany({ include, orderBy: { lastName: "asc" } });
 const findUserByEmail = (email) => prisma.user.findUnique({ where: { email } });
 const findStudent = (id) => prisma.student.findUnique({ where: { id } });
+const findAnyLinkForStudent = (studentId) => prisma.parentStudent.findFirst({ where: { studentId } });
+const findStudentByRegistrationNumber = (registrationNumber) => prisma.student.findUnique({ where: { registrationNumber }, include: { parentLinks: true } });
 const findLink = (parentId, studentId) => prisma.parentStudent.findUnique({ where: { parentId_studentId: { parentId, studentId } } });
 const createLink = (data) => prisma.parentStudent.create({ data, include: { student: true } });
 const deleteLink = (parentId, studentId) => prisma.parentStudent.delete({ where: { parentId_studentId: { parentId, studentId } } });
-module.exports = { findById, findAll, findUserByEmail, findStudent, findLink, createLink, deleteLink };
+module.exports = { findById, findByUserId, findChildForParent, findAll, findUserByEmail, findStudent, findAnyLinkForStudent, findStudentByRegistrationNumber, findLink, createLink, deleteLink };

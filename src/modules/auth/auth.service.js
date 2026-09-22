@@ -34,10 +34,12 @@ const register = async (data) => {
         staffNumber,
         jobTitle,
         qualification,
+        childRegistrationNumber,
+        relationship,
     } = data;
 
     const normalizedEmail = email.toLowerCase().trim();
-    if (!["STUDENT", "TEACHER"].includes(role)) throw new AuthError("Only student and teacher applications are accepted here", 403, "REGISTRATION_ROLE_NOT_ALLOWED");
+    if (!["STUDENT", "TEACHER", "PARENT"].includes(role)) throw new AuthError("Only student, teacher and parent applications are accepted here", 403, "REGISTRATION_ROLE_NOT_ALLOWED");
 
     const existingUser = await repository.findUserByEmail(normalizedEmail);
 
@@ -50,6 +52,12 @@ const register = async (data) => {
     }
 
     const passwordHash = await hashPassword(password);
+
+    const child = role === "PARENT"
+        ? await prisma.student.findUnique({ where: { registrationNumber: childRegistrationNumber.trim() }, include: { parentLinks: true } })
+        : null;
+    if (role === "PARENT" && !child) throw new AuthError("No student was found with that registration number", 404, "STUDENT_NOT_FOUND");
+    if (role === "PARENT" && child.parentLinks.length) throw new AuthError("This student already has a parent account", 409, "STUDENT_PARENT_EXISTS");
 
     const fullName = [firstName, middleName, lastName]
         .filter(Boolean)
@@ -86,6 +94,14 @@ const register = async (data) => {
             },
         }) : null;
 
+        const parent = role === "PARENT" ? await tx.parent.create({
+            data: { userId: user.id, firstName, lastName, relationship: relationship || null },
+        }) : null;
+
+        if (parent) await tx.parentStudent.create({
+            data: { parentId: parent.id, studentId: child.id, relationship: relationship || null, isPrimary: true },
+        });
+
         const staff = role === "TEACHER" ? await tx.staff.create({
             data: {
                 userId: user.id,
@@ -104,6 +120,7 @@ const register = async (data) => {
             user,
             student,
             staff,
+            parent,
         };
     });
 
@@ -111,6 +128,7 @@ const register = async (data) => {
         user: sanitizeUser(result.user),
         student: result.student,
         staff: result.staff,
+        parent: result.parent,
         pendingApproval: true,
     };
 };

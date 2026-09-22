@@ -8,6 +8,8 @@ const { createNotificationSchema } = require("./notification.validator");
 const router = express.Router();
 router.use(authenticate, requireRoles(...NOTIFICATION_ROLES));
 router.post("/", requireRoles("SUPER_ADMIN", "ADMIN"), validate(createNotificationSchema), controller.create);
+router.get("/unread-count", controller.unreadCount);
+router.post("/mark-all-read", controller.markAllRead);
 router.get("/", controller.list);
 router.patch("/:id/read", controller.markRead);
 module.exports = router;
