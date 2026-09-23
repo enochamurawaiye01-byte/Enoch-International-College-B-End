@@ -52,7 +52,7 @@ const createStudent = async (data, schoolId) => {
 
 const getAllStudents = () => repository.findAll();
 const getStudentById = async (id) => { const student = await repository.findById(id); if (!student) throw new NotFoundError("Student not found"); return student; };
-const updateStudent = async (id, data) => { await getStudentById(id); if (data.currentClassId) { const schoolClass = await repository.findClassById(data.currentClassId); if (!schoolClass || !schoolClass.isActive) throw new AppError("Active class not found.", 404, "CLASS_NOT_FOUND"); } return repository.updateStudent(id, data); };
+const updateStudent = async (id, data) => { const student = await getStudentById(id); if (data.currentClassId) { const schoolClass = await repository.findClassById(data.currentClassId); if (!schoolClass || !schoolClass.isActive) throw new AppError("Active class not found.", 404, "CLASS_NOT_FOUND"); } const updated = await repository.updateStudent(id, data); if (data.status) await prisma.user.update({ where: { id: student.userId }, data: { status: data.status === "ACTIVE" ? "ACTIVE" : "INACTIVE" } }); return updated; };
 const updateProfileImage = async (userId, file) => {
     const student = await repository.findByUserId(userId);
     if (!student) throw new NotFoundError("Student profile not found");

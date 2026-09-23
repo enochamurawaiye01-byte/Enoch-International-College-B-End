@@ -12,19 +12,9 @@ const createAcademicSessionSchema = z
                 "Session format must be YYYY/YYYY."
             ),
 
-        startDate: z
-            .string()
-            .datetime({
-                message: "Start date must be a valid ISO date.",
-            })
-            .transform((value) => new Date(value)),
+        startDate: z.coerce.date({ message: "Start date must be a valid date." }),
 
-        endDate: z
-            .string()
-            .datetime({
-                message: "End date must be a valid ISO date.",
-            })
-            .transform((value) => new Date(value)),
+        endDate: z.coerce.date({ message: "End date must be a valid date." }),
 
         isActive: z.boolean().optional().default(false),
     })
@@ -40,6 +30,10 @@ const createAcademicSessionSchema = z
                 message:
                     "Ending year must be exactly one year after starting year.",
             });
+        }
+
+        if (!(data.startDate instanceof Date) || Number.isNaN(data.startDate.getTime()) || !(data.endDate instanceof Date) || Number.isNaN(data.endDate.getTime())) {
+            return;
         }
 
         if (data.endDate <= data.startDate) {
@@ -80,21 +74,9 @@ const updateAcademicSessionSchema = z
             )
             .optional(),
 
-        startDate: z
-            .string()
-            .datetime({
-                message: "Start date must be a valid ISO date.",
-            })
-            .transform((value) => new Date(value))
-            .optional(),
+        startDate: z.coerce.date({ message: "Start date must be a valid date." }).optional(),
 
-        endDate: z
-            .string()
-            .datetime({
-                message: "End date must be a valid ISO date.",
-            })
-            .transform((value) => new Date(value))
-            .optional(),
+        endDate: z.coerce.date({ message: "End date must be a valid date." }).optional(),
 
         isActive: z.boolean().optional(),
     })

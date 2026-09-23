@@ -3,4 +3,6 @@ const create = async (req, res, next) => { try { return res.status(201).json({ s
 const getAll = async (req, res, next) => { try { return res.json({ success: true, data: await service.getAll() }); } catch (error) { next(error); } };
 const getById = async (req, res, next) => { try { return res.json({ success: true, data: await service.getById(req.params.id) }); } catch (error) { next(error); } };
 const getCurrent = async (req, res, next) => { try { return res.json({ success: true, data: await service.getCurrent(req.user.userId) }); } catch (error) { next(error); } };
-module.exports = { create, getAll, getById, getCurrent };
+const update = async (req, res, next) => { try { return res.json({ success: true, data: await service.update(req.params.id, req.body) }); } catch (error) { next(error); } };
+const changeStatus = async (req, res, next) => { try { return res.json({ success: true, data: await service.changeStatus(req.params.id, req.body.status) }); } catch (error) { next(error); } };
+module.exports = { create, getAll, getById, getCurrent, update, changeStatus };
