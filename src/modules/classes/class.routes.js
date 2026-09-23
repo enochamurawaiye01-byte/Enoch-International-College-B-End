@@ -36,6 +36,11 @@ router.get(
     classController.getClassById
 );
 
+router.get(
+    "/:id/students",
+    classController.getStudents
+);
+
 // Update class
 router.patch(
     "/:id",

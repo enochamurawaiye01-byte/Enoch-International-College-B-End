@@ -65,6 +65,8 @@ const updateClass = async (req, res, next) => {
     }
 };
 
+const getStudents = async (req, res, next) => { try { return res.json({ success: true, data: await classService.getStudents(req.params.id, req.user) }); } catch (error) { next(error); } };
+
 // Delete class
 const deleteClass = async (req, res, next) => {
     try {
@@ -85,4 +87,5 @@ module.exports = {
     getClassById,
     updateClass,
     deleteClass,
+    getStudents,
 };

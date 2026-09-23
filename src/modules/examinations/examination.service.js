@@ -1,7 +1,11 @@
 const AppError = require("../../core/errors/AppError");
 const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./examination.repository");
-const create = async (data) => {
+const create = async (data, user) => {
+	if (user?.role === "TEACHER") {
+		const staff = await repository.findStaffByUserId(user.userId);
+		if (!staff || !(await repository.findAssignment(staff.id, data.classId, data.subjectId, data.sessionId, data.termId))) throw new AppError("You are not assigned to this class and subject.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
+	}
 	const [session, term, schoolClass, subject] = await repository.findReferences(data);
 	if (!session || !term || !schoolClass || !subject) throw new NotFoundError("Exam session, term, class, and subject must exist.");
 	if (term.sessionId !== session.id) throw new AppError("Term does not belong to the selected session.", 409, "TERM_SESSION_MISMATCH");

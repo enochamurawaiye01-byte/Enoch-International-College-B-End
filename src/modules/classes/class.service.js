@@ -153,6 +153,13 @@ const updateClass = async (id, data) => {
 };
 
 // Delete class
+const getStudents = async (id, user) => {
+    if (user.role === "TEACHER" && !(await classRepository.findTeacherAssignment(user.userId, id))) {
+        throw new AppError("You are not assigned to this class.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
+    }
+    return classRepository.findStudents(id);
+};
+
 const deleteClass = async (id) => {
     const existingClass =
         await classRepository.findClassById(id);
@@ -193,4 +200,5 @@ module.exports = {
     getClassById,
     updateClass,
     deleteClass,
+    getStudents,
 };

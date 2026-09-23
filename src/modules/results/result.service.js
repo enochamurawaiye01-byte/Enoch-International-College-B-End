@@ -4,5 +4,6 @@ const getById = async (id) => { const result = await repository.findById(id); if
 const getStudentResults = (studentId, canSeeUnpublished) => repository.findForStudent(studentId, !canSeeUnpublished);
 const getMyResults = async (userId) => { const student = await repository.findStudentByUserId(userId); return student ? repository.findForStudent(student.id, true) : []; };
 const getAll = (query) => { const where = {}; ["studentId", "examId", "sessionId", "termId", "published"].forEach((key) => { if (query[key] !== undefined) where[key] = key === "published" ? query[key] === "true" : query[key]; }); return repository.findAll(where); };
+const getForTeacher = (userId, query) => { const where = {}; ["examId", "sessionId", "termId"].forEach((key) => { if (query[key]) where[key] = query[key]; }); return repository.findForTeacher(userId, where); };
 const setPublished = async (id, published) => { await getById(id); return repository.update(id, { published }); };
-module.exports = { getById, getStudentResults, getMyResults, getAll, setPublished };
+module.exports = { getById, getStudentResults, getMyResults, getAll, getForTeacher, setPublished };

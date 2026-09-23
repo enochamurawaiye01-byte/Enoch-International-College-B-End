@@ -9,6 +9,7 @@ const router = express.Router();
 router.use(authenticate);
 router.post("/", requireRoles(...TEACHER_ROLES), validate(createTeacherSchema), controller.create);
 router.get("/me", requireRoles("TEACHER"), controller.getCurrent);
+router.get("/me/assignments", requireRoles("TEACHER"), controller.getAssignments);
 router.get("/", requireRoles(...TEACHER_ROLES, "TEACHER"), controller.getAll);
 router.get("/:id", requireRoles(...TEACHER_ROLES, "TEACHER"), controller.getById);
 router.patch("/:id/status", requireRoles(...TEACHER_ROLES), controller.changeStatus);

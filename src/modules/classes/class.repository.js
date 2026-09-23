@@ -100,6 +100,9 @@ const findClassUsage = async (id) => {
 };
 
 // Delete class
+const findStudents = (classId) => prisma.student.findMany({ where: { currentClassId: classId }, include: { user: { select: { email: true, phoneNumber: true, status: true } } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] });
+const findTeacherAssignment = (userId, classId) => prisma.teacherAssignment.findFirst({ where: { classId, staff: { userId } } });
+
 const deleteClass = async (id) => {
     return prisma.class.delete({
         where: {
@@ -116,5 +119,6 @@ module.exports = {
     findClassByLevelAndArm,
     updateClass,
     findClassUsage,
+    findStudents,
     deleteClass,
 };
