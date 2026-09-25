@@ -1,5 +1,5 @@
 const { prisma } = require("../../config/database");
-const findAll = () => prisma.permission.findMany({ orderBy: [{ module: "asc" }, { action: "asc" }] });
+const findAll = () => prisma.permission.findMany({ orderBy: [{ module: "asc" }, { action: "asc" }], include: { roles: true } });
 const findById = (id) => prisma.permission.findUnique({ where: { id }, include: { roles: true, users: true } });
 const findByKey = (key) => prisma.permission.findUnique({ where: { key } });
 const create = (data) => prisma.permission.create({ data });

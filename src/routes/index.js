@@ -55,9 +55,11 @@ const analyticsRoutes = require("../modules/analytics/analytics.routes");
 const userRoutes = require("../modules/users/user.routes");
 const settingRoutes = require("../modules/settings/setting.routes");
 const dashboardRoutes = require("../modules/dashboards/dashboard.routes");
+const klaviyoRoutes = require("../modules/klaviyo/klaviyo.routes");
 const router = express.Router();
 
 router.use("/auth", authRoutes);
+router.use("/klaviyo", klaviyoRoutes);
 router.use("/students", studentRoutes);
 router.use("/academic-sessions", academicSessionRoutes);
 router.use("/terms", termRoutes);
