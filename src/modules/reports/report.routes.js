@@ -6,6 +6,13 @@ const controller = require("./report.controller");
 const { financialReportQuerySchema } = require("./report.validator");
 
 const router = express.Router();
-router.use(authenticate, requireRoles("ADMIN", "SUPER_ADMIN", "BURSAR"));
+router.use(authenticate, requireRoles("ADMIN", "SUPER_ADMIN", "BURSAR", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"));
+
 router.get("/financial", validate(financialReportQuerySchema), controller.getFinancialReport);
+router.get("/academic", controller.getAcademicReport);
+router.get("/attendance", controller.getAttendanceReport);
+router.get("/examination", controller.getExaminationReport);
+router.get("/operational", controller.getOperationalReport);
+
 module.exports = router;
+

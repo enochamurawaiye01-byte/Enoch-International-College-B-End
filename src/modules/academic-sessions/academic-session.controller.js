@@ -96,10 +96,23 @@ const deleteSession = async (req, res, next) => {
     }
 };
 
+const getCurrentSession = async (req, res, next) => {
+    try {
+        const session = await service.getCurrentSession(req.user.schoolId);
+        res.status(200).json({
+            success: true,
+            data: { session },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     createSession,
     getAllSessions,
     getSessionById,
+    getCurrentSession,
     updateSession,
     activateSession,
     deleteSession,

@@ -121,10 +121,23 @@ const deleteSession = async (id, schoolId) => {
     return repository.remove(id);
 };
 
+const getCurrentSession = async (schoolId) => {
+    let session = await repository.findActiveSession();
+    if (!session && schoolId) {
+        const all = await repository.findAll(schoolId);
+        session = all[0] || null;
+    }
+    if (!session) {
+        throw new AppError("No active academic session found.", 404, "ACTIVE_SESSION_NOT_FOUND");
+    }
+    return session;
+};
+
 module.exports = {
     createSession,
     getAllSessions,
     getSessionById,
+    getCurrentSession,
     updateSession,
     activateSession,
     deleteSession,

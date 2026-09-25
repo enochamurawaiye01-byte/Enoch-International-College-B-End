@@ -5,7 +5,9 @@ const repository = require("./auth.repository");
 const { hashPassword, comparePassword } = require("../../core/utils/hash");
 const {
     generateAccessToken,
+    generateRefreshToken,
     verifyAccessToken,
+    verifyRefreshToken,
 } = require("../../core/utils/jwt");
 const AuthError = require("../../core/errors/AuthError");
 const AppError = require("../../core/errors/AppError");
@@ -171,7 +173,7 @@ const login = async ({ email, password }) => {
 
     if (user.status === "INACTIVE") {
         throw new AuthError(
-            "Your account is inactive",
+            "Your account is inactive or pending approval",
             403,
             AUTH.ERROR_CODES.ACCOUNT_INACTIVE
         );
@@ -206,11 +208,15 @@ const login = async ({ email, password }) => {
         );
     }
 
-   const accessToken = generateAccessToken({
-    userId: user.id,
-    schoolId: user.schoolId,
-    role: user.role,
-});
+    const accessToken = generateAccessToken({
+        userId: user.id,
+        schoolId: user.schoolId,
+        role: user.role,
+    });
+
+    const refreshToken = generateRefreshToken({
+        userId: user.id,
+    });
 
     const sessionDays = Math.min(
         AUTH.SESSION.DEFAULT_DAYS,
@@ -232,6 +238,51 @@ const login = async ({ email, password }) => {
     return {
         user: sanitizeUser(user),
         accessToken,
+        refreshToken,
+        tokenType: AUTH.TOKEN.TYPE,
+        expiresAt,
+    };
+};
+
+const refreshToken = async (token) => {
+    if (!token) {
+        throw new AuthError("Refresh token is required", 400, "REFRESH_TOKEN_REQUIRED");
+    }
+
+    let payload;
+    try {
+        payload = verifyRefreshToken(token);
+    } catch (err) {
+        throw new AuthError("Invalid or expired refresh token", 401, "INVALID_REFRESH_TOKEN");
+    }
+
+    const user = await repository.findUserById(payload.userId);
+    if (!user || user.status !== "ACTIVE") {
+        throw new AuthError("User account is inactive or not found", 403, "ACCOUNT_NOT_ACTIVE");
+    }
+
+    const newAccessToken = generateAccessToken({
+        userId: user.id,
+        schoolId: user.schoolId,
+        role: user.role,
+    });
+
+    const newRefreshToken = generateRefreshToken({
+        userId: user.id,
+    });
+
+    const sessionDays = Math.min(AUTH.SESSION.DEFAULT_DAYS, AUTH.SESSION.MAX_DAYS);
+    const expiresAt = new Date(Date.now() + sessionDays * 24 * 60 * 60 * 1000);
+
+    await repository.createSession({
+        userId: user.id,
+        token: newAccessToken,
+        expiresAt,
+    });
+
+    return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
         tokenType: AUTH.TOKEN.TYPE,
         expiresAt,
     };
@@ -383,6 +434,7 @@ const verifyToken = (token) => {
 module.exports = {
     register,
     login,
+    refreshToken,
     forgotPassword,
     resetPassword,
     logout,
@@ -390,4 +442,5 @@ module.exports = {
     changePassword,
     verifyToken,
 };
+
 

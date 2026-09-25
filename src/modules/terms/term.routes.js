@@ -28,11 +28,18 @@ router.get(
     termController.getAllTerms
 );
 
+// Get current active term
+router.get(
+    "/current",
+    termController.getCurrentTerm
+);
+
 // Get one term
 router.get(
     "/:id",
     termController.getTermById
 );
+
 
 // Update a term
 router.patch(

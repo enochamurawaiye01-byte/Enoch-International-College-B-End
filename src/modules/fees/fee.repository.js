@@ -8,8 +8,19 @@ const accountInclude = {
 	payments: { orderBy: { paymentDate: "desc" } },
 };
 
+const feeStructureInclude = {
+	session: true,
+	term: true,
+	class: true,
+};
+
 const findStudent = (id) => prisma.student.findUnique({ where: { id } });
-const findFeeStructure = (id) => prisma.feeStructure.findUnique({ where: { id } });
+const findFeeStructure = (id) => prisma.feeStructure.findUnique({ where: { id }, include: feeStructureInclude });
+const findAllFeeStructures = (where = {}) => prisma.feeStructure.findMany({ where, include: feeStructureInclude, orderBy: { createdAt: "desc" } });
+const createFeeStructure = (data) => prisma.feeStructure.create({ data, include: feeStructureInclude });
+const updateFeeStructure = (id, data) => prisma.feeStructure.update({ where: { id }, data, include: feeStructureInclude });
+const deleteFeeStructure = (id) => prisma.feeStructure.delete({ where: { id } });
+
 const findEnrollment = (studentId, sessionId, termId) => prisma.enrollment.findFirst({
 	where: { studentId, sessionId, ...(termId ? { termId } : {}), status: "ACTIVE" },
 });
@@ -29,6 +40,10 @@ const updateAccount = (id, data) => prisma.studentFeeAccount.update({ where: { i
 module.exports = {
 	findStudent,
 	findFeeStructure,
+	findAllFeeStructures,
+	createFeeStructure,
+	updateFeeStructure,
+	deleteFeeStructure,
 	findEnrollment,
 	findAccount,
 	findAccountById,
@@ -36,3 +51,4 @@ module.exports = {
 	findAccounts,
 	updateAccount,
 };
+

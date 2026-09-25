@@ -118,10 +118,25 @@ const deleteTerm = async (req, res, next) => {
     }
 };
 
+const getCurrentTerm = async (req, res, next) => {
+    try {
+        const term = await termService.getCurrentTerm();
+
+        return res.status(200).json({
+            success: true,
+            message: "Current active term retrieved successfully.",
+            data: term,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     createTerm,
     getAllTerms,
     getTermById,
+    getCurrentTerm,
     updateTerm,
     activateTerm,
     closeTerm,

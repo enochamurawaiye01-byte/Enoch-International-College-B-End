@@ -340,10 +340,19 @@ const closeTerm = async (id) => {
 // EXPORTS
 // ========================================
 
+const getCurrentTerm = async () => {
+    const term = await termRepository.findActiveTerm();
+    if (!term) {
+        throw new AppError("No active term found.", 404, "ACTIVE_TERM_NOT_FOUND");
+    }
+    return term;
+};
+
 module.exports = {
     createTerm,
     getAllTerms,
     getTermById,
+    getCurrentTerm,
     updateTerm,
     activateTerm,
     deleteTerm,

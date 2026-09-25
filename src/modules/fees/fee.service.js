@@ -5,6 +5,56 @@ const { FEE_ERRORS: ERRORS } = require("./fee.constants");
 
 const toNumber = (value) => Number(value);
 
+const createFeeStructure = async (data) => {
+	if (!data.name || !data.sessionId || data.amount === undefined) {
+		throw new AppError("Name, session ID, and amount are required for a fee structure.", 400, "MISSING_REQUIRED_FIELDS");
+	}
+	return repository.createFeeStructure({
+		name: data.name,
+		feeType: data.feeType || "TUITION",
+		sessionId: data.sessionId,
+		termId: data.termId || null,
+		classId: data.classId || null,
+		amount: toNumber(data.amount),
+		description: data.description || null,
+		isMandatory: data.isMandatory !== undefined ? Boolean(data.isMandatory) : true,
+		isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
+	});
+};
+
+const getAllFeeStructures = async (query = {}) => {
+	const where = {};
+	if (query.sessionId) where.sessionId = query.sessionId;
+	if (query.termId) where.termId = query.termId;
+	if (query.classId) where.classId = query.classId;
+	if (query.feeType) where.feeType = query.feeType;
+	if (query.isActive !== undefined) where.isActive = query.isActive === "true";
+	return repository.findAllFeeStructures(where);
+};
+
+const getFeeStructureById = async (id) => {
+	const feeStructure = await repository.findFeeStructure(id);
+	if (!feeStructure) throw new NotFoundError(ERRORS.FEE_STRUCTURE_NOT_FOUND);
+	return feeStructure;
+};
+
+const updateFeeStructure = async (id, data) => {
+	await getFeeStructureById(id);
+	const updateData = {};
+	if (data.name) updateData.name = data.name;
+	if (data.feeType) updateData.feeType = data.feeType;
+	if (data.amount !== undefined) updateData.amount = toNumber(data.amount);
+	if (data.description !== undefined) updateData.description = data.description;
+	if (data.isMandatory !== undefined) updateData.isMandatory = Boolean(data.isMandatory);
+	if (data.isActive !== undefined) updateData.isActive = Boolean(data.isActive);
+	return repository.updateFeeStructure(id, updateData);
+};
+
+const deleteFeeStructure = async (id) => {
+	await getFeeStructureById(id);
+	return repository.deleteFeeStructure(id);
+};
+
 const createFeeAccount = async ({ studentId, feeStructureId, dueDate }) => {
 	const [student, feeStructure] = await Promise.all([
 		repository.findStudent(studentId),
@@ -70,9 +120,15 @@ const recalculateAccount = async (id, amountPaid) => {
 };
 
 module.exports = {
+	createFeeStructure,
+	getAllFeeStructures,
+	getFeeStructureById,
+	updateFeeStructure,
+	deleteFeeStructure,
 	createFeeAccount,
 	getAccounts,
 	getAccount,
 	getStudentBalance,
 	recalculateAccount,
 };
+

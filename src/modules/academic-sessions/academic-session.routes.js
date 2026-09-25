@@ -28,9 +28,15 @@ router.get(
 );
 
 router.get(
+    "/current",
+    controller.getCurrentSession
+);
+
+router.get(
     "/:id",
     controller.getSessionById
 );
+
 
 router.patch(
     "/:id",

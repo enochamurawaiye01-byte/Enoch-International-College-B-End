@@ -104,12 +104,24 @@ const closeTerm = async (id) => {
         },
     });
 };
+const findActiveTerm = async () => {
+  return prisma.term.findFirst({
+    where: {
+      isActive: true,
+    },
+    include: {
+      session: true,
+    },
+  });
+};
+
 module.exports = {
     createTerm,
     findAllTerms,
     findTermById,
     findTermBySessionAndType,
     findActiveTermBySession,
+    findActiveTerm,
     findOverlappingTerm,
     findSessionById,
     updateTerm,
