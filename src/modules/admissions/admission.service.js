@@ -6,6 +6,7 @@ const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./admission.repository");
 const { generateApplicationNumber } = require("./admission.utils");
 const klaviyoService = require("../klaviyo/klaviyo.service");
+const { sendApprovalEmail, sendRejectionEmail } = require("../../config/mailer");
 
 const getById = async (id) => {
 	const admission = await repository.findById(id);
@@ -32,6 +33,7 @@ const getAll = async (query) => {
 		{ firstName: { contains: query.search, mode: "insensitive" } },
 		{ lastName: { contains: query.search, mode: "insensitive" } },
 		{ applicationNumber: { contains: query.search, mode: "insensitive" } },
+		{ email: { contains: query.search, mode: "insensitive" } },
 	];
 	return repository.findAll(where);
 };
@@ -40,8 +42,65 @@ const update = async (id, data, reviewerId) => {
 	const admission = await getById(id);
 	if (["CONVERTED", "WITHDRAWN"].includes(admission.status)) throw new AppError("This admission can no longer be changed.", 409, "ADMISSION_LOCKED");
 	await validateClass(data.desiredClassId);
+	
 	const reviewData = ["UNDER_REVIEW", "APPROVED", "REJECTED"].includes(data.status) ? { reviewedBy: reviewerId, reviewedAt: new Date() } : {};
-	return repository.update(id, { ...data, ...reviewData });
+	const updated = await repository.update(id, { ...data, ...reviewData });
+
+	// Audit Log recording
+	try {
+		await prisma.auditLog.create({
+			data: {
+				userId: reviewerId || null,
+				action: data.status === "APPROVED" ? "APPROVE_ADMISSION" : data.status === "REJECTED" ? "REJECT_ADMISSION" : "UPDATE_ADMISSION",
+				entity: "Admission",
+				entityId: id,
+				description: `Updated admission application for ${admission.firstName} ${admission.lastName} to ${data.status || 'updated'}`
+			}
+		});
+	} catch (err) {
+		console.warn("[AuditLog Admission Error]:", err.message);
+	}
+
+	// Dispatch Notification Email on status change
+	const fullName = `${admission.firstName} ${admission.lastName}`;
+	const recipientEmail = admission.email || data.email;
+
+	if (data.status === "APPROVED" && recipientEmail) {
+		try {
+			await sendApprovalEmail({
+				to: recipientEmail,
+				name: fullName,
+				role: "STUDENT",
+				registrationNumber: admission.applicationNumber
+			});
+			await klaviyoService.subscribeProfileToList({
+				email: recipientEmail,
+				firstName: admission.firstName,
+				lastName: admission.lastName,
+				phoneNumber: admission.phoneNumber || undefined
+			}).catch(() => {});
+			await klaviyoService.trackApprovalEvent({
+				email: recipientEmail,
+				firstName: admission.firstName,
+				lastName: admission.lastName,
+				role: "STUDENT",
+				registrationNumber: admission.applicationNumber
+			}).catch(() => {});
+		} catch (emailErr) {
+			console.error("[Admission Approval Email Error]:", emailErr.message);
+		}
+	} else if (data.status === "REJECTED" && recipientEmail) {
+		try {
+			await sendRejectionEmail({
+				to: recipientEmail,
+				name: fullName
+			});
+		} catch (emailErr) {
+			console.error("[Admission Rejection Email Error]:", emailErr.message);
+		}
+	}
+
+	return updated;
 };
 
 const convertToStudent = async (id, data = {}) => {
@@ -53,6 +112,7 @@ const convertToStudent = async (id, data = {}) => {
 	if (email && await repository.findStudentByEmail(email.toLowerCase())) throw new AppError("Email is already in use.", 409, "EMAIL_ALREADY_EXISTS");
 	const desiredClassId = payload.currentClassId || admission.desiredClassId || null;
 	await validateClass(desiredClassId);
+
 	return prisma.$transaction(async (tx) => {
 		const fullName = [admission.firstName, admission.middleName, admission.lastName].filter(Boolean).join(" ");
 		const user = await tx.user.create({
@@ -63,9 +123,20 @@ const convertToStudent = async (id, data = {}) => {
 				phoneNumber: payload.phoneNumber || admission.phoneNumber || null,
 				passwordHash: await hashPassword(payload.password || `${admission.firstName}123!`),
 				role: "STUDENT",
-				status: "ACTIVE"
+				status: "ACTIVE",
+				currentClass: admission.currentClass || null,
+				currentTerm: admission.currentTerm || null,
+				targetClass: admission.targetClass || null,
+				targetTerm: admission.targetTerm || null,
+				allergies: admission.allergies || null,
+				bloodGroup: admission.bloodGroup || null,
+				genotype: admission.genotype || null,
+				emergencyContact: admission.emergencyContact || null,
+				medicalNotes: admission.medicalNotes || null,
+				profileImageUrl: admission.profileImageUrl || null,
 			}
 		});
+
 		const registrationNumber = await generateRegistrationNumber(tx, fullName);
 		const student = await tx.student.create({
 			data: {
@@ -79,11 +150,21 @@ const convertToStudent = async (id, data = {}) => {
 				gender: admission.gender || null,
 				address: admission.address || null,
 				currentClassId: desiredClassId,
+				currentTerm: admission.currentTerm || null,
+				targetClass: admission.targetClass || null,
+				targetTerm: admission.targetTerm || null,
+				allergies: admission.allergies || null,
+				bloodGroup: admission.bloodGroup || null,
+				genotype: admission.genotype || null,
+				emergencyContact: admission.emergencyContact || null,
+				medicalNotes: admission.medicalNotes || null,
+				profileImageUrl: admission.profileImageUrl || null,
 				status: "ACTIVE",
 				admissionDate: new Date()
 			},
 			include: { currentClass: true }
 		});
+
 		await tx.admission.update({ where: { id }, data: { status: "CONVERTED", convertedStudentId: student.id, reviewedAt: new Date() } });
 		
 		if (email) {
@@ -101,6 +182,13 @@ const convertToStudent = async (id, data = {}) => {
 				role: "STUDENT",
 				registrationNumber,
 			}).catch((err) => console.error("[Klaviyo admission event error]:", err.message));
+
+			sendApprovalEmail({
+				to: email,
+				name: fullName,
+				role: "STUDENT",
+				registrationNumber
+			}).catch((err) => console.error("[Approval email dispatch error]:", err.message));
 		}
 
 		return student;

@@ -25,6 +25,19 @@ const createAdmissionSchema = z.object({
 	parentEmail: z.string().email("Please provide a valid parent email address").nullable().optional(),
 	parentRelationship: z.string().trim().max(80, "Parent relationship is too long").nullable().optional(),
 	previousSchool: z.string().trim().max(200, "Previous school is too long").nullable().optional(),
+
+	currentClass: z.string().trim().max(100, "Current class is too long").nullable().optional(),
+	currentTerm: z.string().trim().max(50, "Current term is too long").nullable().optional(),
+	targetClass: z.string().trim().max(100, "Target class is too long").nullable().optional(),
+	targetTerm: z.string().trim().max(50, "Target term is too long").nullable().optional(),
+
+	allergies: z.string().trim().max(300, "Allergies notes too long").nullable().optional(),
+	bloodGroup: z.string().trim().max(20, "Blood group invalid").nullable().optional(),
+	genotype: z.string().trim().max(20, "Genotype invalid").nullable().optional(),
+	emergencyContact: z.string().trim().max(200, "Emergency contact details too long").nullable().optional(),
+	medicalNotes: z.string().trim().max(1000, "Medical notes too long").nullable().optional(),
+	profileImageUrl: z.string().trim().max(1000).nullable().optional(),
+
 	desiredClassId: uuid.nullable().optional(),
 }).strict();
 
@@ -32,6 +45,16 @@ const updateAdmissionSchema = z.object({
 	status: admissionStatus.optional(),
 	reviewNotes: z.string().trim().max(2000).nullable().optional(),
 	desiredClassId: uuid.nullable().optional(),
+	currentClass: z.string().trim().max(100).nullable().optional(),
+	currentTerm: z.string().trim().max(50).nullable().optional(),
+	targetClass: z.string().trim().max(100).nullable().optional(),
+	targetTerm: z.string().trim().max(50).nullable().optional(),
+	allergies: z.string().trim().max(300).nullable().optional(),
+	bloodGroup: z.string().trim().max(20).nullable().optional(),
+	genotype: z.string().trim().max(20).nullable().optional(),
+	emergencyContact: z.string().trim().max(200).nullable().optional(),
+	medicalNotes: z.string().trim().max(1000).nullable().optional(),
+	profileImageUrl: z.string().trim().max(1000).nullable().optional(),
 }).strict().refine((data) => Object.keys(data).length > 0, "At least one field is required to update.");
 
 const listAdmissionSchema = z.object({

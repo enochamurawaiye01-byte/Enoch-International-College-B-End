@@ -3,7 +3,7 @@ const AppError = require("../../core/errors/AppError");
 const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./user.repository");
 const { hashNewPassword, normalizeQuery } = require("./user.utils");
-const { sendApprovalEmail, sendApprovalSms } = require("../../config/mailer");
+const { sendApprovalEmail, sendRejectionEmail, sendApprovalSms } = require("../../config/mailer");
 const generateRegistrationNumber = require("../../core/utils/generate-registration-number");
 const klaviyoService = require("../klaviyo/klaviyo.service");
 
@@ -152,6 +152,14 @@ const changeStatus = async (id, status, actor) => {
       }
     }
     return { ...(await getById(id)), registrationNumber: assignedRegNumber, communication };
+  } else if (status === "DEACTIVATED" || status === "SUSPENDED") {
+    if (target.email) {
+      try {
+        await sendRejectionEmail({ to: target.email, name: target.fullName });
+      } catch (err) {
+        followUpErrors.push(`Rejection email: ${err.message}`);
+      }
+    }
   }
 
   return { ...(await getById(id)), registrationNumber: assignedRegNumber, statusChangeWarnings: followUpErrors };

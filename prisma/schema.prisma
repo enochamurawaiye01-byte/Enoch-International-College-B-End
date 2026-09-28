@@ -517,6 +517,19 @@ model User {
   role   UserRole
   status UserStatus @default(ACTIVE)
 
+  currentClass String?
+  currentTerm  String?
+  targetClass  String?
+  targetTerm   String?
+
+  allergies        String?
+  bloodGroup       String?
+  genotype         String?
+  emergencyContact String?
+  medicalNotes     String?
+
+  profileImageUrl String?
+
   lastLoginAt DateTime?
 
   createdAt DateTime @default(now())
@@ -960,10 +973,15 @@ model Student {
 
   currentSessionId String?
 
-  bloodGroup String?
-  genotype   String?
+  currentTerm  String?
+  targetClass  String?
+  targetTerm   String?
 
-  medicalNotes String?
+  allergies        String?
+  bloodGroup       String?
+  genotype         String?
+  emergencyContact String?
+  medicalNotes     String?
 
   profileImageUrl String?
 
@@ -1033,6 +1051,18 @@ model Admission {
   parentEmail     String?
   parentRelationship String?
   previousSchool  String?
+
+  currentClass String?
+  currentTerm  String?
+  targetClass  String?
+  targetTerm   String?
+
+  allergies        String?
+  bloodGroup       String?
+  genotype         String?
+  emergencyContact String?
+  medicalNotes     String?
+  profileImageUrl  String?
 
   desiredClassId String?
   desiredClass   Class? @relation(fields: [desiredClassId], references: [id], onDelete: SetNull)
