@@ -166,4 +166,29 @@ const changeStatus = async (id, status, actor) => {
 };
 
 const resetPassword = async (id, password, actor) => { assertAdmin(actor); const target = await getById(id); if (target.role === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can reset a SUPER_ADMIN password.", 403, "SUPER_ADMIN_PROTECTED"); return repository.update(id, { passwordHash: await hashNewPassword(password) }); };
-module.exports = { create, list, getById, update, changeRole, changeStatus, resetPassword };
+
+const remove = async (id, actor) => {
+  assertAdmin(actor);
+  const target = await getById(id);
+  if (id === actor.userId) throw new AppError("You cannot delete your own account.", 403, "SELF_DELETE_DENIED");
+  if (target.role === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can delete another SUPER_ADMIN.", 403, "SUPER_ADMIN_PROTECTED");
+  if (target.role === "SUPER_ADMIN" && await repository.countActiveSuperAdmins() <= 1) throw new AppError("The last active SUPER_ADMIN cannot be deleted.", 409, "LAST_SUPER_ADMIN_PROTECTED");
+
+  try {
+    await prisma.auditLog.create({
+      data: {
+        userId: actor.userId,
+        action: "DELETE_USER",
+        entity: "User",
+        entityId: id,
+        description: `Deleted user ${target.fullName} (${target.email || 'No email'}) with role ${target.role}`
+      }
+    });
+  } catch (err) {
+    console.warn("[AuditLog Delete User Error]:", err.message);
+  }
+
+  return repository.remove(id);
+};
+
+module.exports = { create, list, getById, update, changeRole, changeStatus, resetPassword, remove };

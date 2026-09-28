@@ -6,5 +6,6 @@ const findAll = (where, skip, take) => prisma.user.findMany({ where, skip, take,
 const count = (where) => prisma.user.count({ where });
 const create = (data) => prisma.user.create({ data, select: publicUserSelect });
 const update = (id, data) => prisma.user.update({ where: { id }, data, select: publicUserSelect });
+const remove = (id) => prisma.user.delete({ where: { id } });
 const countActiveSuperAdmins = () => prisma.user.count({ where: { role: "SUPER_ADMIN", status: "ACTIVE" } });
-module.exports = { findById, findByEmail, findAll, count, create, update, countActiveSuperAdmins };
+module.exports = { findById, findByEmail, findAll, count, create, update, remove, countActiveSuperAdmins };
