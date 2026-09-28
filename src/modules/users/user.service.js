@@ -17,7 +17,79 @@ const assertAdmin = (user) => { if (!["SUPER_ADMIN", "ADMIN"].includes(user.role
 const create = async (data, actor) => { assertAdmin(actor); const email = data.email.toLowerCase(); if (await repository.findByEmail(email)) throw new AppError("Email is already in use.", 409, "EMAIL_ALREADY_EXISTS"); if (data.role === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can create another SUPER_ADMIN.", 403, "ROLE_ESCALATION_DENIED"); return repository.create({ fullName: data.fullName, email, phoneNumber: data.phoneNumber || null, passwordHash: await hashNewPassword(data.password), role: data.role || "STAFF", status: data.status || "ACTIVE", schoolId: actor.schoolId || null }); };
 const list = async (query, actor) => { assertAdmin(actor); const normalized = normalizeQuery(query); const where = { ...(normalized.role ? { role: normalized.role } : {}), ...(normalized.status ? { status: normalized.status } : {}), ...(normalized.search ? { OR: [{ fullName: { contains: normalized.search, mode: "insensitive" } }, { email: { contains: normalized.search, mode: "insensitive" } }, { phoneNumber: { contains: normalized.search, mode: "insensitive" } }] } : {}) }; const [data, total] = await Promise.all([repository.findAll(where, (normalized.page - 1) * normalized.limit, normalized.limit), repository.count(where)]); return { data, pagination: { page: normalized.page, limit: normalized.limit, total, pages: Math.ceil(total / normalized.limit) } }; };
 const update = async (id, data, actor) => { assertAdmin(actor); const target = await getById(id); if (target.role === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can modify a SUPER_ADMIN.", 403, "SUPER_ADMIN_PROTECTED"); return repository.update(id, data); };
-const changeRole = async (id, role, actor) => { assertAdmin(actor); const target = await getById(id); if (id === actor.userId) throw new AppError("You cannot change your own role.", 403, "SELF_ROLE_CHANGE_DENIED"); if (role === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can grant SUPER_ADMIN.", 403, "ROLE_ESCALATION_DENIED"); if (target.role === "SUPER_ADMIN" && role !== "SUPER_ADMIN" && await repository.countActiveSuperAdmins() <= 1) throw new AppError("The last active SUPER_ADMIN cannot be demoted.", 409, "LAST_SUPER_ADMIN_PROTECTED"); return repository.update(id, { role }); };
+const changeRole = async (id, role, actor) => {
+  assertAdmin(actor);
+  const target = await getById(id);
+  if (id === actor.userId) throw new AppError("You cannot change your own role.", 403, "SELF_ROLE_CHANGE_DENIED");
+  if (role === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can grant SUPER_ADMIN.", 403, "ROLE_ESCALATION_DENIED");
+  if (target.role === "SUPER_ADMIN" && role !== "SUPER_ADMIN" && await repository.countActiveSuperAdmins() <= 1) throw new AppError("The last active SUPER_ADMIN cannot be demoted.", 409, "LAST_SUPER_ADMIN_PROTECTED");
+
+  const updatedUser = await repository.update(id, { role });
+
+  const nameParts = (target.fullName || "User").trim().split(/\s+/);
+  const firstName = nameParts[0] || "User";
+  const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "Account";
+
+  if (role === "STUDENT") {
+    const existingStudent = await prisma.student.findUnique({ where: { userId: id } });
+    if (!existingStudent) {
+      const regNo = await generateRegistrationNumber(prisma, target.fullName || "Student User");
+      const defaultClass = await prisma.class.findFirst({ where: { isActive: true } });
+      await prisma.student.create({
+        data: {
+          userId: id,
+          registrationNumber: regNo,
+          firstName,
+          lastName,
+          status: updatedUser.status || "ACTIVE",
+          currentClassId: defaultClass?.id || null,
+          admissionDate: new Date()
+        }
+      });
+    }
+  } else if (["TEACHER", "STAFF", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER", "BURSAR", "MANAGEMENT", "ADMIN", "SUPER_ADMIN"].includes(role)) {
+    const existingStaff = await prisma.staff.findUnique({ where: { userId: id } });
+    if (!existingStaff) {
+      const staffNumber = `EIC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
+      await prisma.staff.create({
+        data: {
+          userId: id,
+          staffNumber,
+          firstName,
+          lastName,
+          jobTitle: titleCaseFromEnum(role),
+          status: updatedUser.status || "ACTIVE",
+          employmentDate: new Date()
+        }
+      });
+    } else {
+      await prisma.staff.update({ where: { id: existingStaff.id }, data: { jobTitle: titleCaseFromEnum(role) } });
+    }
+  } else if (role === "PARENT") {
+    const existingParent = await prisma.parent.findUnique({ where: { userId: id } });
+    if (!existingParent) {
+      await prisma.parent.create({
+        data: { userId: id, firstName, lastName }
+      });
+    }
+  }
+
+  try {
+    await prisma.auditLog.create({
+      data: {
+        userId: actor.userId,
+        action: "CHANGE_ROLE",
+        entity: "User",
+        entityId: id,
+        description: `Changed role of ${target.fullName} from ${target.role} to ${role}`
+      }
+    });
+  } catch (err) {
+    console.warn("[AuditLog Change Role Error]:", err.message);
+  }
+
+  return getById(id);
+};
 
 const changeStatus = async (id, status, actor) => {
   assertAdmin(actor);
