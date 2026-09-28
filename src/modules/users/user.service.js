@@ -50,7 +50,7 @@ const changeRole = async (id, role, actor) => {
   } else if (["TEACHER", "STAFF", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER", "BURSAR", "MANAGEMENT", "ADMIN", "SUPER_ADMIN"].includes(role)) {
     const existingStaff = await prisma.staff.findUnique({ where: { userId: id } });
     if (!existingStaff) {
-      const staffNumber = `EIC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
+      const staffNumber = `MTC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
       await prisma.staff.create({
         data: {
           userId: id,
@@ -129,7 +129,7 @@ const changeStatus = async (id, status, actor) => {
     } else if (["TEACHER", "STAFF", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER", "BURSAR", "MANAGEMENT", "ADMIN", "SUPER_ADMIN"].includes(target.role)) {
       const existingStaff = await prisma.staff.findUnique({ where: { userId: id } });
       if (!existingStaff) {
-        const staffNumber = `EIC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
+        const staffNumber = `MTC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
         assignedRegNumber = staffNumber;
         await prisma.staff.create({
           data: {

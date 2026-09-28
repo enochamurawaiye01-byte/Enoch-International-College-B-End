@@ -5,11 +5,11 @@ const getTransporter = () => {
     const pass = process.env.SMTP_PASSWORD;
 
     if (!user || !pass) {
-        console.warn("[Mailer Warning] SMTP_USER or SMTP_PASSWORD not set in environment. Falling back to log/Klaviyo dispatch.");
+        console.info("[Mailer Info] SMTP_USER or SMTP_PASSWORD not set in environment. Falling back to log dispatch.");
         return {
             sendMail: async (options) => {
                 console.log(`[Approval/Rejection Email Dispatched to ${options.to}] Subject: ${options.subject}`);
-                return { messageId: `klaviyo-dispatched-${Date.now()}` };
+                return { messageId: `log-dispatched-${Date.now()}` };
             }
         };
     }
@@ -24,7 +24,7 @@ const getTransporter = () => {
 
 const sendPasswordResetEmail = async ({ to, resetUrl }) => {
     const transporter = getTransporter();
-    const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+    const from = process.env.SMTP_FROM || process.env.SMTP_USER || "mercytcollege@gmail.com";
 
     await transporter.sendMail({
         from,
@@ -37,7 +37,7 @@ const sendPasswordResetEmail = async ({ to, resetUrl }) => {
 
 const sendApprovalEmail = async ({ to, name, role, registrationNumber }) => {
     const transporter = getTransporter();
-    const from = process.env.SMTP_FROM || process.env.SMTP_USER || "enochinternationalcollege@gmail.com";
+    const from = process.env.SMTP_FROM || process.env.SMTP_USER || "mercytcollege@gmail.com";
     const isStudent = (role || "").toUpperCase() === "STUDENT";
     
     const subject = isStudent
@@ -56,7 +56,7 @@ const sendApprovalEmail = async ({ to, name, role, registrationNumber }) => {
             <div style="text-align: center; border-bottom: 3px solid #1b2a4a; padding-bottom: 16px; margin-bottom: 24px;">
                 <h1 style="margin: 0; color: #1b2a4a; font-size: 22px; letter-spacing: 0.5px; text-transform: uppercase;">MERCY T COLLEGE</h1>
                 <p style="margin: 2px 0 0 0; color: #c53030; font-size: 14px; font-weight: bold;">NURSERY AND PRIMARY SCHOOL</p>
-                <p style="margin: 4px 0 0 0; color: #64748b; font-size: 13px; font-style: italic;">Nurturing Leaders with Character, Discipline & Excellence</p>
+                <p style="margin: 4px 0 0 0; color: #64748b; font-size: 13px; font-style: italic;">Knowledge is Light</p>
             </div>
             
             <div style="background: #ffffff; border-left: 4px solid #1b2a4a; padding: 12px 16px; margin-bottom: 24px; border-radius: 0 4px 4px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
@@ -90,7 +90,7 @@ const sendApprovalEmail = async ({ to, name, role, registrationNumber }) => {
 
 const sendRejectionEmail = async ({ to, name }) => {
     const transporter = getTransporter();
-    const from = process.env.SMTP_FROM || process.env.SMTP_USER || "enochinternationalcollege@gmail.com";
+    const from = process.env.SMTP_FROM || process.env.SMTP_USER || "mercytcollege@gmail.com";
     const subject = "APPLICATION UPDATE — Mercy T College Nursery and Primary School";
 
     const textBody = `Dear ${name},\n\nThank you for your interest in Mercy T College Nursery and Primary School. After careful review, we regret to inform you that your application could not be approved at this time.\n\nWe wish you the very best in your academic pursuits.\n\nYours faithfully,\nAdmissions Office\nMercy T College Nursery and Primary School`;
