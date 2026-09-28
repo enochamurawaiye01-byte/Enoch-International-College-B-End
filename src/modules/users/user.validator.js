@@ -22,7 +22,7 @@ const createUserSchema = z.object({
 	emergencyContact: z.string().trim().max(200).nullable().optional(),
 	medicalNotes: z.string().trim().max(1000).nullable().optional(),
 	profileImageUrl: z.string().trim().max(1000).nullable().optional(),
-}).strict();
+});
 
 const updateUserSchema = z.object({
 	fullName: z.string().trim().min(2, "Full name must be at least 2 characters").max(100, "Full name cannot exceed 100 characters").optional(),
@@ -40,10 +40,10 @@ const updateUserSchema = z.object({
 	emergencyContact: z.string().trim().max(200).nullable().optional(),
 	medicalNotes: z.string().trim().max(1000).nullable().optional(),
 	profileImageUrl: z.string().trim().max(1000).nullable().optional(),
-}).strict().refine((data) => Object.keys(data).length > 0, "At least one field is required to update user.");
+}).refine((data) => Object.keys(data).length > 0, "At least one field is required to update user.");
 
-const roleSchema = z.object({ role: z.enum(roles, { required_error: "Role is required" }) }).strict();
-const statusSchema = z.object({ status: z.enum(statuses, { required_error: "Status is required" }) }).strict();
-const passwordSchema = z.object({ password: z.string().min(8, "Password must be at least 8 characters long").max(128) }).strict();
+const roleSchema = z.object({ role: z.enum(roles, { required_error: "Role is required" }) });
+const statusSchema = z.object({ status: z.enum(statuses, { required_error: "Status is required" }) });
+const passwordSchema = z.object({ password: z.string().min(8, "Password must be at least 8 characters long").max(128) });
 
 module.exports = { createUserSchema, updateUserSchema, roleSchema, statusSchema, passwordSchema, uuid };

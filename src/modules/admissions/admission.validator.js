@@ -39,7 +39,7 @@ const createAdmissionSchema = z.object({
 	profileImageUrl: z.string().trim().max(1000).nullable().optional(),
 
 	desiredClassId: uuid.nullable().optional(),
-}).strict();
+});
 
 const updateAdmissionSchema = z.object({
 	status: admissionStatus.optional(),
@@ -55,12 +55,12 @@ const updateAdmissionSchema = z.object({
 	emergencyContact: z.string().trim().max(200).nullable().optional(),
 	medicalNotes: z.string().trim().max(1000).nullable().optional(),
 	profileImageUrl: z.string().trim().max(1000).nullable().optional(),
-}).strict().refine((data) => Object.keys(data).length > 0, "At least one field is required to update.");
+}).refine((data) => Object.keys(data).length > 0, "At least one field is required to update.");
 
 const listAdmissionSchema = z.object({
 	status: admissionStatus.optional(),
 	desiredClassId: uuid.optional(),
 	search: z.string().trim().max(100).optional(),
-}).strict();
+});
 
 module.exports = { createAdmissionSchema, updateAdmissionSchema, listAdmissionSchema };

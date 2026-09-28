@@ -94,20 +94,14 @@ const loginSchema = z
         required_error: "Password is required",
       })
       .min(1, "Password is required"),
-  })
-  .strict();
-
-/*
-|--------------------------------------------------------------------------
-| REGISTER
-|--------------------------------------------------------------------------
-*/
+  });
 
 const registerSchema = z
   .object({
     firstName: firstNameSchema,
     middleName: optionalMiddleNameSchema,
     lastName: lastNameSchema,
+    fullName: optionalText(z.string().trim().max(160)),
     email: emailSchema,
     phoneNumber: z.string().trim().regex(/^\+[1-9]\d{7,14}$/, "Phone number must use international format, for example +2348012345678"),
     dateOfBirth: z.preprocess((value) => value === "" ? undefined : value, z.coerce.date().optional()),
@@ -125,8 +119,19 @@ const registerSchema = z
     qualification: optionalText(z.string().trim().max(300)),
     childRegistrationNumber: optionalText(z.string().trim().min(2).max(50)),
     relationship: optionalText(z.string().trim().max(50)),
+
+    currentClass: optionalText(z.string().trim().max(100)),
+    currentTerm: optionalText(z.string().trim().max(50)),
+    targetClass: optionalText(z.string().trim().max(100)),
+    targetTerm: optionalText(z.string().trim().max(50)),
+
+    bloodGroup: optionalText(z.string().trim().max(20)),
+    genotype: optionalText(z.string().trim().max(20)),
+    allergies: optionalText(z.string().trim().max(300)),
+    emergencyContact: optionalText(z.string().trim().max(200)),
+    marketingConsent: z.boolean().optional(),
+    schoolId: optionalText(z.string().trim()),
   })
-  .strict()
   .refine(
     (data) => data.password === data.confirmPassword,
     {
