@@ -255,12 +255,23 @@ const remove = async (id, actor) => {
         entityId: id,
         description: `Deleted user ${target.fullName} (${target.email || 'No email'}) with role ${target.role}`
       }
-    });
+    }).catch(() => {});
   } catch (err) {
     console.warn("[AuditLog Delete User Error]:", err.message);
   }
 
-  return repository.remove(id);
+  // Atomically clean up dependent child records before removing user account
+  await prisma.$transaction(async (tx) => {
+    await tx.userRoleAssignment.deleteMany({ where: { userId: id } }).catch(() => {});
+    await tx.permissionGrant.deleteMany({ where: { userId: id } }).catch(() => {});
+    await tx.notification.deleteMany({ where: { userId: id } }).catch(() => {});
+    await tx.student.deleteMany({ where: { userId: id } }).catch(() => {});
+    await tx.staff.deleteMany({ where: { userId: id } }).catch(() => {});
+    await tx.parent.deleteMany({ where: { userId: id } }).catch(() => {});
+    await tx.user.delete({ where: { id } });
+  });
+
+  return { id, fullName: target.fullName, message: "User deleted successfully" };
 };
 
 module.exports = { create, list, getById, update, changeRole, changeStatus, resetPassword, remove };
