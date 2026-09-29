@@ -227,6 +227,71 @@ const sendPasswordResetEmail = async ({ to, resetUrl }) => {
 };
 
 /**
+ * Role Assignment Email Template
+ */
+const sendRoleAssignmentEmail = async ({ to, name, roles, activationUrl }) => {
+  const roleList = Array.isArray(roles) ? roles.join(", ") : roles;
+  const subject = "OFFICIAL ROLE ASSIGNMENT NOTICE — Mercy T College";
+  const text = `Dear ${name},\n\nYou have been assigned the following role(s) at Mercy T College: ${roleList}.\n\nThis assignment requires activation before your workspace permissions take effect.\n\nPlease click the link below to activate your role(s):\n${activationUrl}\n\nIf you did not expect this assignment, please contact School Administration immediately.\n\nBest regards,\nHuman Resources & System Administration\nMercy T College`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; padding: 24px; border: 1px solid #D8D2C6; border-radius: 4px; background-color: #FAF7F2; color: #111111;">
+      <div style="text-align: center; border-bottom: 3px solid #0A192F; padding-bottom: 16px; margin-bottom: 24px;">
+        <h1 style="margin: 0; color: #0A192F; font-size: 22px; letter-spacing: 0.5px; text-transform: uppercase;">MERCY T COLLEGE</h1>
+        <p style="margin: 4px 0 0 0; color: #666666; font-size: 13px; font-style: italic;">Knowledge is Light</p>
+      </div>
+
+      <div style="background: #ffffff; border-left: 4px solid #0A192F; padding: 14px 18px; margin-bottom: 24px; border-radius: 4px; border: 1px solid #D8D2C6;">
+        <h2 style="margin: 0; font-size: 16px; color: #0A192F;">Notice of Staff Role Assignment</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #991B1B; font-weight: bold;">Status: PENDING ACTIVATION</p>
+      </div>
+
+      <p style="font-size: 15px; line-height: 1.6;">Dear <strong>${name}</strong>,</p>
+      <p style="font-size: 15px; line-height: 1.6;">You have been assigned the following system role(s) by the Administrator:</p>
+
+      <div style="background: #F3EEE7; padding: 16px; border-radius: 4px; margin: 20px 0; border: 1px solid #D8D2C6;">
+        <h3 style="margin: 0 0 8px 0; font-size: 14px; color: #0A192F;">Assigned Role(s):</h3>
+        <p style="margin: 0; font-size: 16px; font-weight: bold; color: #0A192F;">${roleList}</p>
+      </div>
+
+      <p style="font-size: 14px; line-height: 1.6;">To finalize your role activation and open your authorized module permissions, please click the button below:</p>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${activationUrl}" style="background-color: #0A192F; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 4px; display: inline-block;">Activate Assigned Role(s)</a>
+      </div>
+
+      <p style="font-size: 12px; color: #666666; margin-top: 20px;">Or copy and paste this link into your browser:<br/><a href="${activationUrl}" style="color: #0A192F;">${activationUrl}</a></p>
+
+      <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #D8D2C6; font-size: 13px; color: #666666;">
+        <p style="margin: 0;">Yours faithfully,</p>
+        <p style="margin: 4px 0 0 0; font-weight: bold; color: #0A192F;">Office of System Administration & Human Resources</p>
+        <p style="margin: 2px 0 0 0;">Mercy T College</p>
+      </div>
+    </div>
+  `;
+
+  return sendEmail({ to, subject, html, text });
+};
+
+/**
+ * Transporter Connection Verifier
+ */
+const verifyTransporter = async () => {
+  const activeTransporter = getTransporter();
+  if (!activeTransporter) {
+    return { verified: false, reason: "NO_SMTP_CREDENTIALS", message: "SMTP credentials (SMTP_USER/SMTP_PASSWORD) are missing in environment." };
+  }
+  try {
+    await activeTransporter.verify();
+    console.log("[SMTP VERIFY SUCCESS] SMTP Transporter connection verified.");
+    return { verified: true, message: "SMTP Transporter connection verified successfully." };
+  } catch (err) {
+    console.error(`[SMTP VERIFY FAILED] ${err.message}`);
+    return { verified: false, reason: "VERIFICATION_FAILED", message: err.message };
+  }
+};
+
+/**
  * Wrappers for Backward Compatibility
  */
 const sendApprovalEmail = async ({ to, name, role, registrationNumber, classOrProgramme, academicSession, department }) => {
@@ -249,11 +314,13 @@ const sendRejectionEmail = async ({ to, name, role }) => {
 
 module.exports = {
   sendEmail,
+  verifyTransporter,
   studentAdmissionApproved,
   studentAdmissionRejected,
   teacherAccountApproved,
   teacherAccountRejected,
   sendPasswordResetEmail,
+  sendRoleAssignmentEmail,
   sendApprovalEmail,
   sendRejectionEmail,
 };

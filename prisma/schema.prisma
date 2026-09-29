@@ -35,25 +35,48 @@ enum UserRole {
   VICE_PRINCIPAL_ACADEMICS
   VICE_PRINCIPAL_ADMIN
   HEAD_TEACHER
-  DEAN_OF_STUDENTS
-  HEAD_OF_DEPARTMENT
+  DEPUTY_HEAD_TEACHER
+  SCHOOL_ADMINISTRATOR
+  ADMIN_MANAGER
+  HR_MANAGER
+  ACCOUNTANT
+  BURSAR
+  FINANCE_OFFICER
+  PROCUREMENT_OFFICER
+  STOREKEEPER
+  REGISTRAR
+  ADMISSIONS_OFFICER
+  EXAMINATION_OFFICER
   EXAM_OFFICER
+  DEAN_OF_STUDENTS
+  ACADEMIC_COORDINATOR
+  HEAD_OF_DEPARTMENT
+  SUBJECT_COORDINATOR
   SENIOR_TEACHER
   CLASS_TEACHER
   SUBJECT_TEACHER
   TEACHER
-  BURSAR
-  ACCOUNTANT
+  SCHOOL_COUNSELOR
   LIBRARIAN
-  LAB_ATTENDANT
-  HEALTH_OFFICER
+  ICT_ADMINISTRATOR
   TRANSPORT_MANAGER
+  DRIVER
+  HEALTH_OFFICER
   HOSTEL_WARDEN
   INVENTORY_OFFICER
   SECURITY_CHIEF
+  LAB_ATTENDANT
+  RECEPTIONIST
+  DATA_ENTRY_OFFICER
   STAFF
   STUDENT
   PARENT
+}
+
+enum RoleAssignmentStatus {
+  PENDING
+  ACTIVE
+  REMOVED
 }
 
 enum UserStatus {
@@ -626,16 +649,28 @@ model RolePermission {
 }
 
 model UserRoleAssignment {
+  id String @id @default(uuid())
+
   userId String
   roleId String
+  status RoleAssignmentStatus @default(PENDING)
+
+  assignedBy String?
+  activatedBy String?
+  activatedAt DateTime?
+  removedAt DateTime?
+
+  activationToken String? @unique
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   assignedAt DateTime @default(now())
 
-  @@id([userId, roleId])
+  @@unique([userId, roleId])
+  @@index([userId])
   @@index([roleId])
+  @@index([status])
 }
 
 model UserPermission {
