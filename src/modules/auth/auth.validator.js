@@ -127,9 +127,15 @@ const registerSchema = z
 
     bloodGroup: optionalText(z.string().trim().max(20)),
     genotype: optionalText(z.string().trim().max(20)),
-    allergies: optionalText(z.string().trim().max(300)),
-    emergencyContact: optionalText(z.string().trim().max(200)),
-    marketingConsent: z.boolean().optional(),
+    marketingConsent: z.preprocess((val) => {
+      if (typeof val === "boolean") return val;
+      if (typeof val === "string") {
+        const s = val.toLowerCase().trim();
+        if (s === "true" || s === "1" || s === "on") return true;
+        if (s === "false" || s === "0" || s === "off" || s === "") return false;
+      }
+      return Boolean(val);
+    }, z.boolean().optional()),
     schoolId: optionalText(z.string().trim()),
   })
   .refine(

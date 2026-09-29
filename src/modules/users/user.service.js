@@ -47,7 +47,14 @@ const changeRole = async (id, role, actor) => {
         }
       });
     }
-  } else if (["TEACHER", "STAFF", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER", "BURSAR", "MANAGEMENT", "ADMIN", "SUPER_ADMIN"].includes(role)) {
+  } else if (role === "PARENT") {
+    const existingParent = await prisma.parent.findUnique({ where: { userId: id } });
+    if (!existingParent) {
+      await prisma.parent.create({
+        data: { userId: id, firstName, lastName }
+      });
+    }
+  } else {
     const existingStaff = await prisma.staff.findUnique({ where: { userId: id } });
     if (!existingStaff) {
       const staffNumber = `MTC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
@@ -64,13 +71,6 @@ const changeRole = async (id, role, actor) => {
       });
     } else {
       await prisma.staff.update({ where: { id: existingStaff.id }, data: { jobTitle: titleCaseFromEnum(role) } });
-    }
-  } else if (role === "PARENT") {
-    const existingParent = await prisma.parent.findUnique({ where: { userId: id } });
-    if (!existingParent) {
-      await prisma.parent.create({
-        data: { userId: id, firstName, lastName }
-      });
     }
   }
 
@@ -126,7 +126,18 @@ const changeStatus = async (id, status, actor) => {
         assignedRegNumber = existingStudent.registrationNumber;
         await prisma.student.update({ where: { id: existingStudent.id }, data: { status: "ACTIVE" } });
       }
-    } else if (["TEACHER", "STAFF", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER", "BURSAR", "MANAGEMENT", "ADMIN", "SUPER_ADMIN"].includes(target.role)) {
+    } else if (target.role === "PARENT") {
+      const existingParent = await prisma.parent.findUnique({ where: { userId: id } });
+      if (!existingParent) {
+        await prisma.parent.create({
+          data: {
+            userId: id,
+            firstName,
+            lastName
+          }
+        });
+      }
+    } else {
       const existingStaff = await prisma.staff.findUnique({ where: { userId: id } });
       if (!existingStaff) {
         const staffNumber = `MTC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
@@ -146,21 +157,10 @@ const changeStatus = async (id, status, actor) => {
         assignedRegNumber = existingStaff.staffNumber;
         await prisma.staff.update({ where: { id: existingStaff.id }, data: { status: "ACTIVE" } });
       }
-    } else if (target.role === "PARENT") {
-      const existingParent = await prisma.parent.findUnique({ where: { userId: id } });
-      if (!existingParent) {
-        await prisma.parent.create({
-          data: {
-            userId: id,
-            firstName,
-            lastName
-          }
-        });
-      }
     }
   } else {
     if (target.role === "STUDENT") await prisma.student.updateMany({ where: { userId: id }, data: { status: "INACTIVE" } });
-    if (["TEACHER", "STAFF"].includes(target.role)) await prisma.staff.updateMany({ where: { userId: id }, data: { status: "INACTIVE" } });
+    if (target.role !== "STUDENT" && target.role !== "PARENT") await prisma.staff.updateMany({ where: { userId: id }, data: { status: "INACTIVE" } });
   }
 
   const followUpErrors = [];

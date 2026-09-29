@@ -24,7 +24,7 @@ const subscribeProfileToList = async ({ email, firstName, lastName, phoneNumber 
   const { apiKey, listId } = getCredentials();
 
   if (!apiKey || !listId) {
-    console.warn("[Klaviyo Warning] Klaviyo integration skipped: missing private API key or List ID in environment variables.");
+    console.debug("[Klaviyo Info] Klaviyo environment variables missing. Skipping Klaviyo sync.");
     return { success: false, message: "Klaviyo integration environment variables are missing." };
   }
 
