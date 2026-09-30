@@ -41,7 +41,8 @@ const testEmail = async (req, res, next) => {
     if (!verification.verified) {
       return res.status(400).json({ success: false, verification });
     }
-    const recipient = req.body.to || req.user.email || process.env.SMTP_USER;
+    const recipient = process.env.MAILER_TEST_RECIPIENT || req.user.email;
+    if (!recipient) return res.status(400).json({ success: false, message: "Configure a test recipient or provide an account email." });
     const sendResult = await mailer.sendEmail({
       to: recipient,
       subject: "TEST EMAIL — Mercy T College Diagnostic",

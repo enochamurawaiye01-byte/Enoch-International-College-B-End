@@ -2,12 +2,20 @@ const nodemailer = require("nodemailer");
 
 let transporter = null;
 
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+}[character]));
+
 const createTransporter = () => {
   const host = process.env.SMTP_HOST || "smtp.gmail.com";
   const port = Number(process.env.SMTP_PORT || 587);
   const user = (process.env.SMTP_USER || "").trim();
   const pass = (process.env.SMTP_PASSWORD || "").trim();
-  const secure = process.env.SMTP_SECURE === "true" || port === 465;
+  const secure = port === 465;
 
   if (!user || !pass) {
     return null;
@@ -17,6 +25,11 @@ const createTransporter = () => {
     host,
     port,
     secure,
+    requireTLS: port === 587,
+    tls: { minVersion: "TLSv1.2" },
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
     auth: { user, pass },
   });
 };
@@ -32,12 +45,15 @@ const getTransporter = () => {
  * Generic Base Email Sender Function
  */
 const sendEmail = async ({ to, subject, html, text }) => {
+  if (typeof to !== "string" || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(to.trim())) {
+    throw new Error("A valid email recipient is required.");
+  }
+
   const activeTransporter = getTransporter();
   const from = process.env.SMTP_FROM || process.env.SMTP_USER || "mercytcollege@gmail.com";
 
   if (!activeTransporter) {
-    console.info(`[SMTP SKIPPED] Email to <${to}> with subject "${subject}" was not sent because SMTP credentials (SMTP_USER/SMTP_PASSWORD) are not set in environment.`);
-    return { success: false, skipped: true, reason: "NO_SMTP_CREDENTIALS" };
+    throw new Error("Email delivery is not configured. Set SMTP_USER and SMTP_PASSWORD in the server environment.");
   }
 
   try {
@@ -48,11 +64,17 @@ const sendEmail = async ({ to, subject, html, text }) => {
       text,
       html,
     });
-    console.log(`[SMTP SUCCESS] Email sent to <${to}> | Subject: "${subject}" | MessageID: ${info.messageId}`);
-    return { success: true, messageId: info.messageId };
+    console.log(`[SMTP SUCCESS] Message accepted | Subject: "${subject}" | MessageID: ${info.messageId} | Response: ${info.response}`);
+    return {
+      success: true,
+      messageId: info.messageId,
+      response: info.response,
+      acceptedCount: info.accepted?.length || 0,
+      rejectedCount: info.rejected?.length || 0,
+    };
   } catch (error) {
-    console.error(`[SMTP FAILED] Failed to send email to <${to}> | Subject: "${subject}" | Error: ${error.message}`);
-    return { success: false, error: error.message };
+    console.error(`[SMTP FAILED] Message rejected | Subject: "${subject}" | Code: ${error.code || "UNKNOWN"} | Error: ${error.message}`);
+    throw error;
   }
 };
 
@@ -76,19 +98,19 @@ const studentAdmissionApproved = async ({ to, name, registrationNumber, classOrP
 
       <div style="background: #ffffff; border-left: 4px solid #041664; padding: 14px 18px; margin-bottom: 24px; border-radius: 0 6px 6px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
         <h2 style="margin: 0; font-size: 17px; color: #041664;">Official Notice of Admission</h2>
-        <p style="margin: 4px 0 0 0; font-size: 14px; font-weight: bold; color: #B02032;">Registration Number: ${registrationNumber || 'N/A'}</p>
+        <p style="margin: 4px 0 0 0; font-size: 14px; font-weight: bold; color: #B02032;">Registration Number: ${escapeHtml(registrationNumber || 'N/A')}</p>
       </div>
 
-      <p style="font-size: 15px; line-height: 1.6;">Dear <strong>${name}</strong>,</p>
+      <p style="font-size: 15px; line-height: 1.6;">Dear <strong>${escapeHtml(name)}</strong>,</p>
       <p style="font-size: 15px; line-height: 1.6;">Congratulations! 🎉 We are pleased to inform you that your application for admission to <strong>Mercy T College Nursery and Primary School</strong> has been approved by the School Admissions Board.</p>
       
       <div style="background: #f1f5f9; padding: 16px; border-radius: 6px; margin: 20px 0;">
         <h3 style="margin: 0 0 10px 0; font-size: 15px; color: #041664;">Admission Summary:</h3>
         <ul style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.8; color: #334155;">
-          <li><strong>Student Name:</strong> ${name}</li>
-          <li><strong>Registration Number:</strong> <code style="background:#041664; color:#ffffff; padding:2px 8px; border-radius:4px; font-weight:bold;">${registrationNumber}</code></li>
-          <li><strong>Class / Level:</strong> ${classText}</li>
-          <li><strong>Academic Session:</strong> ${sessionText}</li>
+          <li><strong>Student Name:</strong> ${escapeHtml(name)}</li>
+          <li><strong>Registration Number:</strong> <code style="background:#041664; color:#ffffff; padding:2px 8px; border-radius:4px; font-weight:bold;">${escapeHtml(registrationNumber)}</code></li>
+          <li><strong>Class / Level:</strong> ${escapeHtml(classText)}</li>
+          <li><strong>Academic Session:</strong> ${escapeHtml(sessionText)}</li>
           <li><strong>Status:</strong> <span style="color:#10b981; font-weight:bold;">ADMITTED / APPROVED</span></li>
         </ul>
       </div>
@@ -120,7 +142,7 @@ const studentAdmissionRejected = async ({ to, name }) => {
         <p style="margin: 2px 0 0 0; color: #B02032; font-size: 14px; font-weight: bold;">NURSERY AND PRIMARY SCHOOL</p>
       </div>
 
-      <p style="font-size: 15px; line-height: 1.6;">Dear <strong>${name}</strong>,</p>
+      <p style="font-size: 15px; line-height: 1.6;">Dear <strong>${escapeHtml(name)}</strong>,</p>
       <p style="font-size: 15px; line-height: 1.6;">Thank you for applying for admission to <strong>Mercy T College Nursery and Primary School</strong>.</p>
       <p style="font-size: 15px; line-height: 1.6;">After careful review of your application by the Admissions Board, we regret to inform you that we are unable to grant approval for admission at this time due to class capacity limitations.</p>
       <p style="font-size: 15px; line-height: 1.6;">We appreciate your effort and wish you success in your academic endeavors.</p>
@@ -156,19 +178,19 @@ const teacherAccountApproved = async ({ to, name, staffId, department, role }) =
 
       <div style="background: #ffffff; border-left: 4px solid #041664; padding: 14px 18px; margin-bottom: 24px; border-radius: 0 6px 6px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
         <h2 style="margin: 0; font-size: 17px; color: #041664;">Official Letter of Appointment</h2>
-        <p style="margin: 4px 0 0 0; font-size: 14px; font-weight: bold; color: #B02032;">Staff ID: ${staffId || 'N/A'}</p>
+        <p style="margin: 4px 0 0 0; font-size: 14px; font-weight: bold; color: #B02032;">Staff ID: ${escapeHtml(staffId || 'N/A')}</p>
       </div>
 
-      <p style="font-size: 15px; line-height: 1.6;">Dear <strong>${name}</strong>,</p>
+      <p style="font-size: 15px; line-height: 1.6;">Dear <strong>${escapeHtml(name)}</strong>,</p>
       <p style="font-size: 15px; line-height: 1.6;">On behalf of the Management of <strong>Mercy T College Nursery and Primary School</strong>, we are pleased to confirm that your staff appointment has been approved.</p>
 
       <div style="background: #f1f5f9; padding: 16px; border-radius: 6px; margin: 20px 0;">
         <h3 style="margin: 0 0 10px 0; font-size: 15px; color: #041664;">Staff Profile Details:</h3>
         <ul style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.8; color: #334155;">
-          <li><strong>Staff Name:</strong> ${name}</li>
-          <li><strong>Staff ID:</strong> <code style="background:#041664; color:#ffffff; padding:2px 8px; border-radius:4px; font-weight:bold;">${staffId}</code></li>
-          <li><strong>Assigned Role:</strong> ${roleText}</li>
-          <li><strong>Department:</strong> ${deptText}</li>
+          <li><strong>Staff Name:</strong> ${escapeHtml(name)}</li>
+          <li><strong>Staff ID:</strong> <code style="background:#041664; color:#ffffff; padding:2px 8px; border-radius:4px; font-weight:bold;">${escapeHtml(staffId)}</code></li>
+          <li><strong>Assigned Role:</strong> ${escapeHtml(roleText)}</li>
+          <li><strong>Department:</strong> ${escapeHtml(deptText)}</li>
           <li><strong>Status:</strong> <span style="color:#10b981; font-weight:bold;">ACTIVE</span></li>
         </ul>
       </div>
@@ -200,7 +222,7 @@ const teacherAccountRejected = async ({ to, name }) => {
         <p style="margin: 2px 0 0 0; color: #B02032; font-size: 14px; font-weight: bold;">NURSERY AND PRIMARY SCHOOL</p>
       </div>
 
-      <p style="font-size: 15px; line-height: 1.6;">Dear <strong>${name}</strong>,</p>
+      <p style="font-size: 15px; line-height: 1.6;">Dear <strong>${escapeHtml(name)}</strong>,</p>
       <p style="font-size: 15px; line-height: 1.6;">Thank you for your interest in employment with <strong>Mercy T College Nursery and Primary School</strong>.</p>
       <p style="font-size: 15px; line-height: 1.6;">After reviewing your staff application, we regret to inform you that we are unable to approve your application at this time.</p>
       <p style="font-size: 15px; line-height: 1.6;">We appreciate your effort and wish you professional success.</p>
@@ -220,9 +242,10 @@ const teacherAccountRejected = async ({ to, name }) => {
  * Password Reset Template
  */
 const sendPasswordResetEmail = async ({ to, resetUrl }) => {
+  const safeResetUrl = escapeHtml(resetUrl);
   const subject = "Reset your Mercy T College password";
   const text = `Use this link to reset your password: ${resetUrl}\n\nThis link expires in 15 minutes. If you did not request this, you can ignore this email.`;
-  const html = `<p>Use the link below to reset your password for <strong>Mercy T College Nursery and Primary School</strong>:</p><p><a href="${resetUrl}">Reset your password</a></p><p>This link expires in 15 minutes. If you did not request this, you can ignore this email.</p>`;
+  const html = `<p>Use the link below to reset your password for <strong>Mercy T College Nursery and Primary School</strong>:</p><p><a href="${safeResetUrl}">Reset your password</a></p><p>This link expires in 15 minutes. If you did not request this, you can ignore this email.</p>`;
   return sendEmail({ to, subject, html, text });
 };
 
@@ -231,6 +254,9 @@ const sendPasswordResetEmail = async ({ to, resetUrl }) => {
  */
 const sendRoleAssignmentEmail = async ({ to, name, roles, activationUrl }) => {
   const roleList = Array.isArray(roles) ? roles.join(", ") : roles;
+  const safeRoleList = escapeHtml(roleList);
+  const safeName = escapeHtml(name);
+  const safeActivationUrl = escapeHtml(activationUrl);
   const subject = "OFFICIAL ROLE ASSIGNMENT NOTICE — Mercy T College";
   const text = `Dear ${name},\n\nYou have been assigned the following role(s) at Mercy T College: ${roleList}.\n\nThis assignment requires activation before your workspace permissions take effect.\n\nPlease click the link below to activate your role(s):\n${activationUrl}\n\nIf you did not expect this assignment, please contact School Administration immediately.\n\nBest regards,\nHuman Resources & System Administration\nMercy T College`;
 
@@ -246,21 +272,21 @@ const sendRoleAssignmentEmail = async ({ to, name, roles, activationUrl }) => {
         <p style="margin: 4px 0 0 0; font-size: 13px; color: #991B1B; font-weight: bold;">Status: PENDING ACTIVATION</p>
       </div>
 
-      <p style="font-size: 15px; line-height: 1.6;">Dear <strong>${name}</strong>,</p>
+      <p style="font-size: 15px; line-height: 1.6;">Dear <strong>${safeName}</strong>,</p>
       <p style="font-size: 15px; line-height: 1.6;">You have been assigned the following system role(s) by the Administrator:</p>
 
       <div style="background: #F3EEE7; padding: 16px; border-radius: 4px; margin: 20px 0; border: 1px solid #D8D2C6;">
         <h3 style="margin: 0 0 8px 0; font-size: 14px; color: #0A192F;">Assigned Role(s):</h3>
-        <p style="margin: 0; font-size: 16px; font-weight: bold; color: #0A192F;">${roleList}</p>
+        <p style="margin: 0; font-size: 16px; font-weight: bold; color: #0A192F;">${safeRoleList}</p>
       </div>
 
       <p style="font-size: 14px; line-height: 1.6;">To finalize your role activation and open your authorized module permissions, please click the button below:</p>
 
       <div style="text-align: center; margin: 28px 0;">
-        <a href="${activationUrl}" style="background-color: #0A192F; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 4px; display: inline-block;">Activate Assigned Role(s)</a>
+        <a href="${safeActivationUrl}" style="background-color: #0A192F; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 4px; display: inline-block;">Activate Assigned Role(s)</a>
       </div>
 
-      <p style="font-size: 12px; color: #666666; margin-top: 20px;">Or copy and paste this link into your browser:<br/><a href="${activationUrl}" style="color: #0A192F;">${activationUrl}</a></p>
+      <p style="font-size: 12px; color: #666666; margin-top: 20px;">Or copy and paste this link into your browser:<br/><a href="${safeActivationUrl}" style="color: #0A192F;">${safeActivationUrl}</a></p>
 
       <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #D8D2C6; font-size: 13px; color: #666666;">
         <p style="margin: 0;">Yours faithfully,</p>

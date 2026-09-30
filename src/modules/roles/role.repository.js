@@ -1,7 +1,13 @@
 const { prisma } = require("../../config/database");
 
-const findAll = () => prisma.role.findMany({ include: { permissions: { include: { permission: true } }, users: true }, orderBy: { name: "asc" } });
-const findById = (id, tx = prisma) => tx.role.findUnique({ where: { id }, include: { permissions: { include: { permission: true } }, users: true } });
+const findAll = () => prisma.role.findMany({
+  include: { permissions: { include: { permission: true } } },
+  orderBy: { name: "asc" }
+});
+const findById = (id, tx = prisma) => tx.role.findUnique({
+  where: { id },
+  include: { permissions: { include: { permission: true } }, users: { select: { id: true, status: true } } }
+});
 const findByName = (name, tx = prisma) => tx.role.findUnique({ where: { name } });
 const create = (data) => prisma.role.create({ data });
 const update = (id, data) => prisma.role.update({ where: { id }, data });
@@ -30,7 +36,19 @@ const findAssignmentByToken = (activationToken) => prisma.userRoleAssignment.fin
 
 const findUserAssignments = (userId) => prisma.userRoleAssignment.findMany({
   where: { userId },
-  include: { role: true }
+  select: {
+    id: true,
+    userId: true,
+    roleId: true,
+    status: true,
+    assignedBy: true,
+    activatedBy: true,
+    activatedAt: true,
+    removedAt: true,
+    activationExpiresAt: true,
+    assignedAt: true,
+    role: { select: { id: true, name: true, description: true, isActive: true } }
+  }
 });
 
 const findUserRoleAssignment = (userId, roleId, status = "ACTIVE", tx = prisma) => tx.userRoleAssignment.findFirst({
@@ -53,25 +71,29 @@ const revoke = (data) => prisma.userRoleAssignment.update({
 
 const findUser = (id) => prisma.user.findUnique({ where: { id } });
 
-const countActiveSuperAdmins = async (tx = prisma) => {
-  const superAdminRole = await tx.role.findUnique({ where: { name: "SUPER_ADMIN" } });
-  const directUsersCount = await tx.user.count({
-    where: { role: "SUPER_ADMIN", status: "ACTIVE" }
-  });
-
-  let assignedCount = 0;
-  if (superAdminRole) {
-    assignedCount = await tx.userRoleAssignment.count({
-      where: {
-        roleId: superAdminRole.id,
-        status: "ACTIVE",
-        user: { status: "ACTIVE" }
-      }
-    });
-  }
-
-  return Math.max(directUsersCount, assignedCount);
+const lockSuperAdminLimit = async (tx) => {
+  await tx.$queryRawUnsafe("WITH role_limit_lock AS MATERIALIZED (SELECT pg_advisory_xact_lock(7432196081)) SELECT 1::int AS locked FROM role_limit_lock");
 };
+
+const countActiveSuperAdmins = (tx = prisma) => tx.user.count({
+  where: {
+    status: "ACTIVE",
+    OR: [
+      { role: "SUPER_ADMIN" },
+      {
+        roleAssignments: {
+          some: {
+            OR: [
+              { status: "ACTIVE" },
+              { status: "PENDING", activationExpiresAt: { gt: new Date() } }
+            ],
+            role: { name: "SUPER_ADMIN", isActive: true }
+          }
+        }
+      }
+    ]
+  }
+});
 
 const updateUserRole = (id, role) => prisma.user.update({ where: { id }, data: { role } });
 
@@ -89,6 +111,7 @@ module.exports = {
   activateAssignment,
   revoke,
   findUser,
+  lockSuperAdminLimit,
   countActiveSuperAdmins,
   updateUserRole
 };

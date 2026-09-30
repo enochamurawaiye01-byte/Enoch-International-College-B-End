@@ -5,14 +5,7 @@ const MODULE_ACCESS_ERRORS = {
     PAYMENT_REQUIRED: "Outstanding fees restrict access to this module.",
 };
 
-const MODULE_KEYS = [
-    "admissions", "students", "parents", "enrollments", "promotions", "staff", "teachers",
-    "roles", "permissions", "fees", "invoices", "payments", "receipts", "reports", "library", "inventory",
-    "transport", "hostel", "medical", "discipline", "attendance", "teacher-attendance", "timetable", "lessons",
-    "assignments", "assessments", "examinations", "cbt", "results", "report-cards", "transcripts",
-    "announcements", "notifications", "messaging", "documents", "news", "events", "gallery", "website",
-    "analytics", "audit-logs", "management", "academic-sessions", "terms", "classes", "subjects", "departments",
-    "class-subjects", "teacher-assignments", "question-bank", "exam-attempts", "settings",
-];
+const { MODULE_REGISTRY } = require("../permissions/module-registry");
+const MODULE_KEYS = MODULE_REGISTRY.filter(({ apiRoute }) => apiRoute).map(({ apiRoute }) => apiRoute.replace(/^\//, ""));
 
 module.exports = { MODULE_ACCESS_ERRORS, MODULE_KEYS };

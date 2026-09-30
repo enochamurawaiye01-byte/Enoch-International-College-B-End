@@ -3,11 +3,15 @@ const AuthError = require("../errors/AuthError");
 const authService = require("../../modules/auth/auth.service");
 const moduleAccessService = require("../../modules/settings/module-access.service");
 const { MODULE_KEYS } = require("../../modules/settings/module-access.constants");
+const { hasPermission, moduleActionForRequest } = require("./authorization.middleware");
 const { prisma } = require("../../config/database");
 
 const getModuleFromRequest = (req) => {
-    const segments = req.baseUrl.split("/").filter(Boolean);
-    const module = segments[segments.indexOf("api") + 1];
+    const segments = (req.originalUrl || req.baseUrl).split("?")[0].split("/").filter(Boolean);
+    const versionIndex = segments.findIndex((segment) => /^v\d+$/.test(segment));
+    const apiIndex = segments.indexOf("api");
+    const moduleIndex = versionIndex >= 0 ? versionIndex + 1 : apiIndex >= 0 ? apiIndex + 1 : 0;
+    const module = segments[moduleIndex];
     return MODULE_KEYS.includes(module) ? module : null;
 };
 
@@ -83,6 +87,22 @@ const authenticate = async (req, res, next) => {
         };
         req.session = session;
         req.token = token;
+
+        const permissionKey = moduleActionForRequest(req);
+        if (permissionKey && !permissionKey.startsWith("notifications:")
+            && !await hasPermission(req.user, permissionKey)) {
+            if (permissionKey.startsWith("roles:")) {
+                await prisma.auditLog.create({
+                    data: {
+                        userId: req.user.userId,
+                        action: "UNAUTHORIZED_ROLE_MANAGEMENT_ATTEMPT",
+                        entity: "Role",
+                        description: "Blocked authenticated request to a role-management API"
+                    }
+                }).catch(() => {});
+            }
+            throw new AuthError("You do not have permission to access this module action.", 403, "INSUFFICIENT_PERMISSIONS");
+        }
 
         next();
     } catch (error) {

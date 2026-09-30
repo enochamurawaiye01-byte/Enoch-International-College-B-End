@@ -3,8 +3,17 @@ const assert = require("node:assert/strict");
 const roleService = require("../../src/modules/roles/role.service");
 const roleRepository = require("../../src/modules/roles/role.repository");
 const { prisma } = require("../../src/config/database");
+const { moduleActionForRequest } = require("../../src/core/middleware/authorization.middleware");
 
 test("Access Control & Super Admin Protection Unit Tests", async (t) => {
+  await t.test("approval requests require the module approve action", async () => {
+    assert.equal(moduleActionForRequest({
+      originalUrl: "/api/admissions/application-id",
+      method: "PATCH",
+      body: { status: "APPROVED" }
+    }), "admissions:approve");
+  });
+
   await t.test("should enforce Max 3 Super Admin limit guardrail", async () => {
     const originalCount = roleRepository.countActiveSuperAdmins;
     const originalFindUser = roleRepository.findUser;
@@ -14,8 +23,9 @@ test("Access Control & Super Admin Protection Unit Tests", async (t) => {
 
     roleRepository.countActiveSuperAdmins = async () => 3;
     roleRepository.findUser = async (id) => ({ id, fullName: "Target User", email: "target@school.com", role: "STAFF" });
-    roleRepository.findByName = async (name) => ({ id: "role-super-admin-id", name: "SUPER_ADMIN" });
+    roleRepository.findByName = async (name) => ({ id: "role-super-admin-id", name: "SUPER_ADMIN", isActive: true });
     roleRepository.findUserRoleAssignment = async () => null;
+    prisma.$queryRawUnsafe = async () => [];
     prisma.$transaction = async (cb) => cb(prisma);
 
     try {
@@ -33,6 +43,7 @@ test("Access Control & Super Admin Protection Unit Tests", async (t) => {
       roleRepository.findUser = originalFindUser;
       roleRepository.findByName = originalFindByName;
       roleRepository.findUserRoleAssignment = originalFindAssignment;
+      delete prisma.$queryRawUnsafe;
       prisma.$transaction = originalTransaction;
     }
   });
@@ -58,5 +69,24 @@ test("Access Control & Super Admin Protection Unit Tests", async (t) => {
     const token = crypto.randomBytes(32).toString("hex");
     assert.equal(typeof token, "string");
     assert.equal(token.length, 64);
+  });
+
+  await t.test("should reject localhost or missing activation URLs in production", async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalFrontendUrl = process.env.FRONTEND_URL;
+    process.env.NODE_ENV = "production";
+    delete process.env.FRONTEND_URL;
+    try {
+      assert.throws(() => roleService.buildRoleActivationUrl("assignment-id"), /FRONTEND_URL must be configured/);
+      process.env.FRONTEND_URL = "http://erp.example.com";
+      assert.throws(() => roleService.buildRoleActivationUrl("assignment-id"), /must use HTTPS/);
+      process.env.FRONTEND_URL = "https://erp.example.com/portal/";
+      assert.equal(roleService.buildRoleActivationUrl("assignment-id"), "https://erp.example.com/portal/activate-role.html?assignmentId=assignment-id");
+    } finally {
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+      if (originalFrontendUrl === undefined) delete process.env.FRONTEND_URL;
+      else process.env.FRONTEND_URL = originalFrontendUrl;
+    }
   });
 });

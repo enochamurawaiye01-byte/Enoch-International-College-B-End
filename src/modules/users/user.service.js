@@ -2,10 +2,11 @@ const { prisma } = require("../../config/database");
 const AppError = require("../../core/errors/AppError");
 const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./user.repository");
+const roleRepository = require("../roles/role.repository");
+const roleService = require("../roles/role.service");
 const { hashNewPassword, normalizeQuery } = require("./user.utils");
 const { sendApprovalEmail, sendRejectionEmail, sendApprovalSms } = require("../../config/mailer");
 const generateRegistrationNumber = require("../../core/utils/generate-registration-number");
-const klaviyoService = require("../klaviyo/klaviyo.service");
 
 const titleCaseFromEnum = (str) => {
   if (!str) return "";
@@ -14,90 +15,67 @@ const titleCaseFromEnum = (str) => {
 
 const getById = async (id) => { const user = await repository.findById(id); if (!user) throw new NotFoundError("User not found"); return user; };
 const assertAdmin = (user) => { if (!["SUPER_ADMIN", "ADMIN"].includes(user.role)) throw new AppError("User administration access required.", 403, "USER_ACCESS_DENIED"); };
-const create = async (data, actor) => { assertAdmin(actor); const email = data.email.toLowerCase(); if (await repository.findByEmail(email)) throw new AppError("Email is already in use.", 409, "EMAIL_ALREADY_EXISTS"); if (data.role === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can create another SUPER_ADMIN.", 403, "ROLE_ESCALATION_DENIED"); return repository.create({ fullName: data.fullName, email, phoneNumber: data.phoneNumber || null, passwordHash: await hashNewPassword(data.password), role: data.role || "STAFF", status: data.status || "ACTIVE", schoolId: actor.schoolId || null }); };
+const create = async (data, actor) => {
+  assertAdmin(actor);
+  const email = data.email.toLowerCase();
+  if (await repository.findByEmail(email)) throw new AppError("Email is already in use.", 409, "EMAIL_ALREADY_EXISTS");
+  const role = data.role || "STAFF";
+  const createData = {
+    fullName: data.fullName,
+    email,
+    phoneNumber: data.phoneNumber || null,
+    passwordHash: await hashNewPassword(data.password),
+    role: "STAFF",
+    status: "INACTIVE",
+    schoolId: actor.schoolId || null
+  };
+  const user = await repository.create(createData);
+  try {
+    await roleService.changeUserRoles(user.id, { roles: [role] }, actor);
+    await repository.update(user.id, { status: data.status || "ACTIVE" });
+    return getById(user.id);
+  } catch (error) {
+    await prisma.$transaction(async (tx) => {
+      await tx.notification.deleteMany({ where: { userId: user.id } });
+      await tx.userRoleAssignment.deleteMany({ where: { userId: user.id } });
+      await tx.user.delete({ where: { id: user.id } });
+    }).catch(() => {});
+    throw error;
+  }
+};
 const list = async (query, actor) => { assertAdmin(actor); const normalized = normalizeQuery(query); const where = { ...(normalized.role ? { role: normalized.role } : {}), ...(normalized.status ? { status: normalized.status } : {}), ...(normalized.search ? { OR: [{ fullName: { contains: normalized.search, mode: "insensitive" } }, { email: { contains: normalized.search, mode: "insensitive" } }, { phoneNumber: { contains: normalized.search, mode: "insensitive" } }] } : {}) }; const [data, total] = await Promise.all([repository.findAll(where, (normalized.page - 1) * normalized.limit, normalized.limit), repository.count(where)]); return { data, pagination: { page: normalized.page, limit: normalized.limit, total, pages: Math.ceil(total / normalized.limit) } }; };
-const update = async (id, data, actor) => { assertAdmin(actor); const target = await getById(id); if (target.role === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can modify a SUPER_ADMIN.", 403, "SUPER_ADMIN_PROTECTED"); return repository.update(id, data); };
-const changeRole = async (id, role, actor) => {
+const update = async (id, data, actor) => {
   assertAdmin(actor);
   const target = await getById(id);
-  if (id === actor.userId) throw new AppError("You cannot change your own role.", 403, "SELF_ROLE_CHANGE_DENIED");
-  if (role === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can grant SUPER_ADMIN.", 403, "ROLE_ESCALATION_DENIED");
-  if (target.role === "SUPER_ADMIN" && role !== "SUPER_ADMIN" && await repository.countActiveSuperAdmins() <= 1) throw new AppError("The last active SUPER_ADMIN cannot be demoted.", 409, "LAST_SUPER_ADMIN_PROTECTED");
-
-  const updatedUser = await repository.update(id, { role });
-
-  const nameParts = (target.fullName || "User").trim().split(/\s+/);
-  const firstName = nameParts[0] || "User";
-  const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "Account";
-
-  if (role === "STUDENT") {
-    const existingStudent = await prisma.student.findUnique({ where: { userId: id } });
-    if (!existingStudent) {
-      const regNo = await generateRegistrationNumber(prisma, target.fullName || "Student User");
-      const defaultClass = await prisma.class.findFirst({ where: { isActive: true } });
-      await prisma.student.create({
-        data: {
-          userId: id,
-          registrationNumber: regNo,
-          firstName,
-          lastName,
-          status: updatedUser.status || "ACTIVE",
-          currentClassId: defaultClass?.id || null,
-          admissionDate: new Date()
-        }
-      });
-    }
-  } else if (role === "PARENT") {
-    const existingParent = await prisma.parent.findUnique({ where: { userId: id } });
-    if (!existingParent) {
-      await prisma.parent.create({
-        data: { userId: id, firstName, lastName }
-      });
-    }
-  } else {
-    const existingStaff = await prisma.staff.findUnique({ where: { userId: id } });
-    if (!existingStaff) {
-      const staffNumber = `MTC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
-      await prisma.staff.create({
-        data: {
-          userId: id,
-          staffNumber,
-          firstName,
-          lastName,
-          jobTitle: titleCaseFromEnum(role),
-          status: updatedUser.status || "ACTIVE",
-          employmentDate: new Date()
-        }
-      });
-    } else {
-      await prisma.staff.update({ where: { id: existingStaff.id }, data: { jobTitle: titleCaseFromEnum(role) } });
-    }
-  }
-
-  try {
-    await prisma.auditLog.create({
-      data: {
-        userId: actor.userId,
-        action: "CHANGE_ROLE",
-        entity: "User",
-        entityId: id,
-        description: `Changed role of ${target.fullName} from ${target.role} to ${role}`
-      }
-    });
-  } catch (err) {
-    console.warn("[AuditLog Change Role Error]:", err.message);
-  }
-
-  return getById(id);
+  const targetHasSuperAdmin = target.role === "SUPER_ADMIN"
+    || target.roleAssignments?.some((assignment) => assignment.role?.name === "SUPER_ADMIN" && ["ACTIVE", "PENDING"].includes(assignment.status));
+  if (targetHasSuperAdmin && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can modify a SUPER_ADMIN.", 403, "SUPER_ADMIN_PROTECTED");
+  if (data.status === undefined) return repository.update(id, data);
+  const { status, ...profileData } = data;
+  await changeStatus(id, status, actor);
+  return Object.keys(profileData).length ? repository.update(id, profileData) : getById(id);
+};
+const changeRole = async (id, role, actor) => {
+  return roleService.changeUserRoles(id, { roles: [role] }, actor);
 };
 
 const changeStatus = async (id, status, actor) => {
   assertAdmin(actor);
   const target = await getById(id);
   if (id === actor.userId && status !== "ACTIVE") throw new AppError("You cannot deactivate your own account.", 403, "SELF_DISABLE_DENIED");
-  if (target.role === "SUPER_ADMIN" && status !== "ACTIVE" && await repository.countActiveSuperAdmins() <= 1) throw new AppError("The last active SUPER_ADMIN cannot be disabled.", 409, "LAST_SUPER_ADMIN_PROTECTED");
-
-  await repository.update(id, { status });
+  const targetHasSuperAdmin = target.role === "SUPER_ADMIN"
+    || target.roleAssignments?.some((assignment) => assignment.role?.name === "SUPER_ADMIN" && ["ACTIVE", "PENDING"].includes(assignment.status));
+  if (targetHasSuperAdmin && status !== "ACTIVE") {
+    await prisma.$transaction(async (tx) => {
+      await roleRepository.lockSuperAdminLimit(tx);
+      if (await roleRepository.countActiveSuperAdmins(tx) <= 1) {
+        throw new AppError("The last active SUPER_ADMIN cannot be disabled.", 409, "LAST_SUPER_ADMIN_PROTECTED");
+      }
+      await tx.user.update({ where: { id }, data: { status } });
+    });
+  } else {
+    await repository.update(id, { status });
+  }
 
   let assignedRegNumber = null;
 
@@ -200,23 +178,8 @@ const changeStatus = async (id, status, actor) => {
         const firstName = nameParts[0] || "";
         const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
 
-        // Sync to Klaviyo List & Track Approval Event
-        await klaviyoService.subscribeProfileToList({
-          email: target.email,
-          firstName,
-          lastName,
-          phoneNumber: target.phoneNumber || undefined,
-        }).catch((err) => followUpErrors.push(`Klaviyo subscribe: ${err.message}`));
-
-        await klaviyoService.trackApprovalEvent({
-          email: target.email,
-          firstName,
-          lastName,
-          role: target.role,
-          registrationNumber: assignedRegNumber,
-        }).catch((err) => followUpErrors.push(`Klaviyo event: ${err.message}`));
-
         const result = await sendApprovalEmail({ to: target.email, name: target.fullName, role: target.role, registrationNumber: assignedRegNumber });
+        if (!result?.success) throw new Error("The mailer did not accept the approval email.");
         communication.email = true;
         communication.emailMessageId = result.messageId;
       } catch (error) {
@@ -243,8 +206,9 @@ const remove = async (id, actor) => {
   assertAdmin(actor);
   const target = await getById(id);
   if (id === actor.userId) throw new AppError("You cannot delete your own account.", 403, "SELF_DELETE_DENIED");
-  if (target.role === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can delete another SUPER_ADMIN.", 403, "SUPER_ADMIN_PROTECTED");
-  if (target.role === "SUPER_ADMIN" && await repository.countActiveSuperAdmins() <= 1) throw new AppError("The last active SUPER_ADMIN cannot be deleted.", 409, "LAST_SUPER_ADMIN_PROTECTED");
+  const targetHasSuperAdmin = target.role === "SUPER_ADMIN"
+    || target.roleAssignments?.some((assignment) => assignment.role?.name === "SUPER_ADMIN" && ["ACTIVE", "PENDING"].includes(assignment.status));
+  if (targetHasSuperAdmin && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can delete another SUPER_ADMIN.", 403, "SUPER_ADMIN_PROTECTED");
 
   try {
     await prisma.auditLog.create({
@@ -262,6 +226,12 @@ const remove = async (id, actor) => {
 
   // Atomically clean up dependent child records before removing user account
   await prisma.$transaction(async (tx) => {
+    if (targetHasSuperAdmin) {
+      await roleRepository.lockSuperAdminLimit(tx);
+      if (await roleRepository.countActiveSuperAdmins(tx) <= 1) {
+        throw new AppError("The last active SUPER_ADMIN cannot be deleted.", 409, "LAST_SUPER_ADMIN_PROTECTED");
+      }
+    }
     await tx.userRoleAssignment.deleteMany({ where: { userId: id } }).catch(() => {});
     await tx.permissionGrant.deleteMany({ where: { userId: id } }).catch(() => {});
     await tx.notification.deleteMany({ where: { userId: id } }).catch(() => {});

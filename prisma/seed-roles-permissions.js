@@ -1,24 +1,16 @@
 require("dotenv").config();
 const { PrismaClient } = require("@prisma/client");
 const { PrismaPg } = require("@prisma/adapter-pg");
+const { MODULE_REGISTRY } = require("../src/modules/permissions/module-registry");
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
 });
 
 const prisma = new PrismaClient({ adapter });
+const ALL_ACTIONS = ["manage", "view", "create", "edit", "delete", "approve", "export"];
 
-const ALL_56_MODULES = [
-  "admissions", "academic_sessions", "analytics", "announcements", "assignments",
-  "attendance", "audit_logs", "auth", "class_subjects", "classes", "dashboards",
-  "departments", "discipline", "documents", "enrollments", "events", "exam_attempts",
-  "examinations", "fees", "gallery", "hostel", "inventory", "invoices", "jobs",
-  "klaviyo", "lessons", "library", "management", "medical", "messaging", "news",
-  "notifications", "parents", "payments", "permissions", "prefects", "promotions",
-  "question_bank", "receipts", "report_cards", "reports", "results", "roles",
-  "settings", "staff", "students", "subjects", "teacher_assignments", "teacher_attendance",
-  "teachers", "terms", "timetable", "transcripts", "transport", "users", "website"
-];
+const ALL_56_MODULES = MODULE_REGISTRY.map(({ key }) => key);
 
 const PREDEFINED_ROLES = [
   { name: "SUPER_ADMIN", label: "Super Admin", description: "Full system administration access to all 56 modules", isSystem: true, modules: ALL_56_MODULES },
@@ -47,7 +39,7 @@ const PREDEFINED_ROLES = [
   { name: "SENIOR_TEACHER", label: "Senior Teacher", description: "Senior teaching faculty for class instruction and exam grading", isSystem: false, modules: ["dashboards", "classes", "students", "attendance", "assignments", "examinations", "results", "lessons"] },
   { name: "CLASS_TEACHER", label: "Class Form Teacher", description: "Form master responsible for class attendance and terminal report cards", isSystem: false, modules: ["dashboards", "classes", "students", "attendance", "report_cards", "timetable", "assignments"] },
   { name: "SUBJECT_TEACHER", label: "Subject Specialist Teacher", description: "Subject instruction, homework creation, CBT exam questions, and grading", isSystem: false, modules: ["dashboards", "subjects", "assignments", "question_bank", "examinations", "results", "lessons"] },
-  { name: "TEACHER", label: "General Teacher", description: "Class instruction, daily attendance, assignment scoring, and timetables", isSystem: false, modules: ["dashboards", "classes", "students", "attendance", "assignments", "examinations", "results", "timetable", "lessons"] },
+  { name: "TEACHER", label: "General Teacher", description: "Class instruction, daily attendance, assignment scoring, and timetables", isSystem: false, modules: ["dashboards", "classes", "students", "subjects", "attendance", "assignments", "examinations", "results", "timetable", "lessons"] },
   { name: "SCHOOL_COUNSELOR", label: "School Counselor", description: "Student guidance, behavioral notes, and parent consultation", isSystem: false, modules: ["dashboards", "students", "discipline", "parents", "messaging"] },
   { name: "LIBRARIAN", label: "Librarian", description: "Library cataloging, book borrowing loans, and digital documents", isSystem: false, modules: ["dashboards", "library", "documents", "announcements"] },
   { name: "ICT_ADMINISTRATOR", label: "ICT Administrator", description: "Portal technical settings, user accounts, roles, and audit trail logs", isSystem: false, modules: ["dashboards", "users", "permissions", "roles", "audit_logs", "settings"] },
@@ -63,15 +55,81 @@ const PREDEFINED_ROLES = [
   { name: "LAB_ATTENDANT", label: "Science & ICT Lab Officer", description: "Laboratory equipment inventory and practical exam setup", isSystem: false, modules: ["dashboards", "inventory", "exam_attempts", "settings"] },
   { name: "INVENTORY_OFFICER", label: "Inventory Officer", description: "School store inventory and stock audit tracking", isSystem: false, modules: ["dashboards", "inventory", "reports"] },
   { name: "STAFF", label: "General Staff", description: "Basic staff member access for school announcements and internal messaging", isSystem: false, modules: ["dashboards", "announcements", "events", "documents", "messaging", "notifications"] },
-  { name: "STUDENT", label: "Enrolled Student", description: "Student workspace for assignments, CBT exams, report cards, and timetables", isSystem: false, modules: ["dashboards", "assignments", "examinations", "exam_attempts", "report_cards", "attendance", "timetable", "messaging"] },
-  { name: "PARENT", label: "Parent / Guardian", description: "Parent portal for ward academic performance, report cards, and fee invoices", isSystem: false, modules: ["dashboards", "parents", "students", "report_cards", "invoices", "payments", "receipts", "messaging"] }
+  { name: "STUDENT", label: "Enrolled Student", description: "Student workspace for assignments, CBT exams, report cards, and timetables", isSystem: false, modules: ["dashboards", "students", "assignments", "examinations", "exam_attempts", "report_cards", "attendance", "timetable", "fees", "invoices", "payments", "receipts", "messaging"] },
+  { name: "PARENT", label: "Parent / Guardian", description: "Parent portal for ward academic performance, report cards, and fee invoices", isSystem: false, modules: ["dashboards", "parents", "students", "report_cards", "fees", "invoices", "payments", "receipts", "messaging"] }
 ];
+
+const ROLE_EDIT_MODULES = {
+  PARENT: ["payments"],
+  STUDENT: ["payments"],
+  TEACHER: ["attendance", "assignments", "results", "lessons"],
+  SENIOR_TEACHER: ["attendance", "assignments", "results", "lessons"],
+  CLASS_TEACHER: ["attendance", "assignments", "report_cards"],
+  SUBJECT_TEACHER: ["assignments", "results", "lessons"],
+  HEAD_TEACHER: ["attendance", "teacher_attendance", "lessons", "report_cards"],
+  DEPUTY_HEAD_TEACHER: ["attendance", "teacher_attendance", "lessons", "report_cards"],
+  HEAD_OF_DEPARTMENT: ["teacher_assignments", "lessons"],
+  SUBJECT_COORDINATOR: ["assignments", "question_bank", "lessons"],
+  ACCOUNTANT: ["fees", "invoices", "payments", "receipts"],
+  BURSAR: ["fees", "invoices", "payments", "receipts", "inventory"],
+  FINANCE_OFFICER: ["fees", "invoices", "payments", "receipts"],
+  PROCUREMENT_OFFICER: ["inventory"],
+  STOREKEEPER: ["inventory"],
+  REGISTRAR: ["students", "enrollments", "promotions", "transcripts", "documents", "parents"],
+  ADMISSIONS_OFFICER: ["admissions", "students", "enrollments", "documents", "parents"],
+  EXAMINATION_OFFICER: ["question_bank", "examinations", "results", "transcripts", "report_cards"],
+  ACADEMIC_COORDINATOR: ["subjects", "class_subjects", "lessons", "timetable"],
+  HR_MANAGER: ["staff", "teacher_attendance", "users"],
+  ICT_ADMINISTRATOR: ["users", "permissions", "roles", "settings"],
+  TRANSPORT_MANAGER: ["transport"],
+  LIBRARIAN: ["library", "documents"],
+  HEALTH_OFFICER: ["medical"],
+  HOSTEL_WARDEN: ["hostel"],
+  RECEPTIONIST: ["admissions", "messaging"],
+  DATA_ENTRY_OFFICER: ["students", "attendance", "results", "assignments"],
+  SCHOOL_ADMINISTRATOR: ["users", "students", "staff", "parents", "academic_sessions", "terms"],
+  ADMIN_MANAGER: ["staff", "teacher_attendance", "events", "documents"],
+  PRINCIPAL: ["students", "staff", "teachers", "classes", "academic_sessions", "terms", "report_cards", "discipline"],
+  VICE_PRINCIPAL: ["classes", "subjects", "teacher_assignments", "lessons", "timetable", "examinations", "results"],
+  VICE_PRINCIPAL_ACADEMICS: ["classes", "subjects", "teacher_assignments", "lessons", "timetable", "examinations", "results"],
+  VICE_PRINCIPAL_ADMIN: ["staff", "teacher_attendance", "transport", "hostel", "documents"],
+  MANAGEMENT: ["management", "students", "staff"],
+};
+
+const ROLE_APPROVE_MODULES = {
+  PRINCIPAL: ["admissions", "report_cards", "results", "staff"],
+  VICE_PRINCIPAL: ["report_cards", "results", "examinations"],
+  VICE_PRINCIPAL_ACADEMICS: ["report_cards", "results", "examinations"],
+  HEAD_TEACHER: ["teacher_attendance", "report_cards", "lessons"],
+  DEPUTY_HEAD_TEACHER: ["teacher_attendance", "report_cards"],
+  HR_MANAGER: ["staff", "teacher_attendance"],
+  BURSAR: ["fees", "payments", "invoices"],
+  FINANCE_OFFICER: ["payments", "invoices"],
+  ADMISSIONS_OFFICER: ["admissions", "enrollments"],
+  EXAMINATION_OFFICER: ["examinations", "results", "report_cards"],
+  ACADEMIC_COORDINATOR: ["lessons", "teacher_assignments"],
+  HEAD_OF_DEPARTMENT: ["lessons", "teacher_assignments"],
+};
+
+const REPORT_MODULES = new Set(["reports", "analytics", "financial_reports", "transcripts", "results"]);
+
+const getRoleActions = (roleName, moduleKey) => {
+  if (roleName === "SUPER_ADMIN" || roleName === "ADMIN") return ALL_ACTIONS;
+  const roleActions = ["view"];
+  if ((ROLE_EDIT_MODULES[roleName] || []).includes(moduleKey)) roleActions.push("create", "edit");
+  if ((ROLE_APPROVE_MODULES[roleName] || []).includes(moduleKey)) roleActions.push("approve");
+  if (REPORT_MODULES.has(moduleKey) && ["PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER", "BURSAR", "ACCOUNTANT", "FINANCE_OFFICER", "EXAMINATION_OFFICER", "REGISTRAR", "MANAGEMENT", "GOVERNING_BOARD", "ICT_ADMINISTRATOR"].includes(roleName)) {
+    roleActions.push("export");
+  }
+  if (roleName === "ICT_ADMINISTRATOR" && ["users", "permissions", "roles", "settings", "audit_logs"].includes(moduleKey)) roleActions.push("manage");
+  return roleActions;
+};
 
 async function seedRolesAndPermissions() {
   console.log("Seeding 56 Modules, 30+ Roles, and Permissions Matrix...");
 
   // 1. Seed Permissions for all 56 modules
-  const actions = ["manage", "view", "create", "edit", "delete", "approve", "export"];
+  const actions = ALL_ACTIONS;
   for (const moduleKey of ALL_56_MODULES) {
     for (const act of actions) {
       const permKey = `${moduleKey}:${act}`;
@@ -107,10 +165,13 @@ async function seedRolesAndPermissions() {
     await prisma.rolePermission.deleteMany({ where: { roleId: roleObj.id } });
 
     const rolePermsData = [];
-    for (const modKey of roleDef.modules) {
+    const roleModules = [...new Set([...roleDef.modules, "notifications"])];
+    for (const modKey of roleModules) {
       const perms = await prisma.permission.findMany({ where: { module: modKey } });
       for (const p of perms) {
-        rolePermsData.push({ roleId: roleObj.id, permissionId: p.id });
+        if (getRoleActions(roleDef.name, modKey).includes(p.action)) {
+          rolePermsData.push({ roleId: roleObj.id, permissionId: p.id });
+        }
       }
     }
 

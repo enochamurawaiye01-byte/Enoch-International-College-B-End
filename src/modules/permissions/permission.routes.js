@@ -7,6 +7,7 @@ const { PERMISSION_ROLES } = require("./permission.constants");
 const { createPermissionSchema, updatePermissionSchema, assignmentSchema } = require("./permission.validator");
 const router = express.Router();
 router.use(authenticate, requireRoles(...PERMISSION_ROLES));
+router.get("/modules", controller.getModules);
 router.post("/", validate(createPermissionSchema), controller.create);
 router.get("/", controller.getAll);
 router.get("/:id", controller.getById);

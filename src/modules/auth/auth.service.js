@@ -367,7 +367,70 @@ const getCurrentUser = async (userId) => {
         );
     }
 
-    return sanitizeUser(user);
+    const [assignments, directPermissions] = await Promise.all([
+        prisma.userRoleAssignment.findMany({
+            where: { userId },
+            include: {
+                role: {
+                    include: {
+                        permissions: {
+                            where: { permission: { isActive: true } },
+                            include: { permission: { select: { key: true, module: true } } }
+                        }
+                    }
+                }
+            }
+        }),
+        prisma.userPermission.findMany({
+            where: { userId, permission: { isActive: true } },
+            include: { permission: { select: { key: true, module: true } } }
+        })
+    ]);
+
+    const permissions = new Map();
+    const activeAssignments = assignments.filter((assignment) => assignment.status === "ACTIVE" && assignment.role.isActive);
+    for (const assignment of activeAssignments) {
+        for (const rolePermission of assignment.role.permissions) {
+            permissions.set(rolePermission.permission.key, rolePermission.permission);
+        }
+    }
+    const primaryAssignment = assignments.find((assignment) => assignment.role.name === user.role);
+    if (!assignments.length && !primaryAssignment && user.role !== "SUPER_ADMIN") {
+        const primaryRole = await prisma.role.findUnique({
+            where: { name: user.role },
+            include: {
+                permissions: {
+                    where: { permission: { isActive: true } },
+                    include: { permission: { select: { key: true, module: true } } }
+                }
+            }
+        });
+        if (primaryRole?.isActive) {
+            for (const rolePermission of primaryRole.permissions) {
+                permissions.set(rolePermission.permission.key, rolePermission.permission);
+            }
+        }
+    }
+    for (const grant of directPermissions) permissions.set(grant.permission.key, grant.permission);
+
+    if (user.role === "SUPER_ADMIN") {
+        const allPermissions = await prisma.permission.findMany({
+            where: { isActive: true },
+            select: { key: true, module: true }
+        });
+        for (const permission of allPermissions) permissions.set(permission.key, permission);
+    }
+
+    const effectivePermissions = [...permissions.values()];
+    return {
+        ...sanitizeUser(user),
+        activeRoles: [...new Set([
+            ...activeAssignments.map((assignment) => assignment.role.name),
+            ...(assignments.length === 0 && !primaryAssignment && user.role !== "SUPER_ADMIN" ? [user.role] : [])
+        ])],
+        permissions: effectivePermissions.map((permission) => permission.key),
+        modulePermissions: [...new Set(effectivePermissions.map((permission) => permission.module))]
+    };
 };
 
 const changePassword = async (userId, data) => {

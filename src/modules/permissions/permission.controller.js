@@ -1,4 +1,6 @@
 const service = require("./permission.service");
+const { MODULE_REGISTRY } = require("./module-registry");
+const getModules = async (_req, res) => res.json({ success: true, data: MODULE_REGISTRY });
 const create = async (req, res, next) => { try { return res.status(201).json({ success: true, data: await service.create(req.body, req.user.userId) }); } catch (error) { next(error); } };
 const getAll = async (req, res, next) => { try { return res.json({ success: true, data: await service.getAll() }); } catch (error) { next(error); } };
 const getById = async (req, res, next) => { try { return res.json({ success: true, data: await service.getById(req.params.id) }); } catch (error) { next(error); } };
@@ -6,4 +8,4 @@ const update = async (req, res, next) => { try { return res.json({ success: true
 const remove = async (req, res, next) => { try { return res.json({ success: true, data: await service.remove(req.params.id, req.user.userId) }); } catch (error) { next(error); } };
 const assign = async (req, res, next) => { try { return res.json({ success: true, data: await service.assign(req.body, req.user.userId) }); } catch (error) { next(error); } };
 const revoke = async (req, res, next) => { try { return res.json({ success: true, data: await service.revoke(req.body, req.user.userId) }); } catch (error) { next(error); } };
-module.exports = { create, getAll, getById, update, remove, assign, revoke };
+module.exports = { getModules, create, getAll, getById, update, remove, assign, revoke };

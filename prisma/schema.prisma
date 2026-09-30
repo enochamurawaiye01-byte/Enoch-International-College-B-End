@@ -649,7 +649,7 @@ model RolePermission {
 }
 
 model UserRoleAssignment {
-  id String @id @default(uuid())
+  id String @unique @default(uuid())
 
   userId String
   roleId String
@@ -661,16 +661,19 @@ model UserRoleAssignment {
   removedAt DateTime?
 
   activationToken String? @unique
+  activationExpiresAt DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  notifications Notification[]
 
   assignedAt DateTime @default(now())
 
-  @@unique([userId, roleId])
+  @@id([userId, roleId])
   @@index([userId])
   @@index([roleId])
   @@index([status])
+  @@index([activationExpiresAt])
 }
 
 model UserPermission {
@@ -2481,6 +2484,8 @@ model Notification {
 
   title   String
   message String
+  roleAssignmentId String?
+  roleAssignment UserRoleAssignment? @relation(fields: [roleAssignmentId], references: [id], onDelete: SetNull)
 
   status NotificationReadStatus @default(UNREAD)
 
@@ -2491,6 +2496,7 @@ model Notification {
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+  @@index([roleAssignmentId])
 }
 
 // ============================================================

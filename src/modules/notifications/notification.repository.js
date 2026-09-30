@@ -1,6 +1,19 @@
 const { prisma } = require("../../config/database");
 const create = (data) => prisma.notification.create({ data });
-const findAll = (where) => prisma.notification.findMany({ where, orderBy: { createdAt: "desc" } });
+const findAll = (where) => prisma.notification.findMany({
+	where,
+	include: {
+		roleAssignment: {
+			select: {
+				id: true,
+				status: true,
+				activationExpiresAt: true,
+				role: { select: { name: true } }
+			}
+		}
+	},
+	orderBy: { createdAt: "desc" }
+});
 const findById = (id) => prisma.notification.findUnique({ where: { id } });
 const markRead = (id) => prisma.notification.update({ where: { id }, data: { status: "READ", readAt: new Date() } });
 const countUnread = (userId) => prisma.notification.count({ where: { userId, status: "UNREAD" } });

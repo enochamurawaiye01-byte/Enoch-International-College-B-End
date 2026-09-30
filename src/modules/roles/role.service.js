@@ -5,8 +5,34 @@ const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./role.repository");
 const { audit } = require("./role.utils");
 const { sendRoleAssignmentEmail } = require("../../config/mailer");
+const { UserRole } = require("@prisma/client");
+const generateRegistrationNumber = require("../../core/utils/generate-registration-number");
 
 const MAX_SUPER_ADMINS = 3;
+const ROLE_ACTIVATION_TTL_MS = 72 * 60 * 60 * 1000;
+const buildRoleActivationUrl = (assignmentId) => {
+  const configuredUrl = process.env.FRONTEND_URL?.trim();
+  if (!configuredUrl && process.env.NODE_ENV === "production") {
+    throw new Error("FRONTEND_URL must be configured to send role activation links.");
+  }
+  const frontendUrl = new URL(configuredUrl || "http://localhost:5500");
+  if (!["http:", "https:"].includes(frontendUrl.protocol)
+      || (process.env.NODE_ENV === "production" && frontendUrl.protocol !== "https:")) {
+    throw new Error("FRONTEND_URL must use HTTPS in production.");
+  }
+  frontendUrl.pathname = `${frontendUrl.pathname.replace(/\/$/, "")}/activate-role.html`;
+  frontendUrl.search = "";
+  frontendUrl.searchParams.set("assignmentId", assignmentId);
+  return frontendUrl.toString();
+};
+const auditDeniedRoleAction = (actor, userId, action) => audit(
+  prisma,
+  actor?.userId || null,
+  action,
+  "User",
+  userId || null,
+  "Unauthorized role-management attempt"
+);
 
 const getById = async (id) => {
   const role = await repository.findById(id);
@@ -42,9 +68,14 @@ const remove = async (id, actorId) => {
 /**
  * Assign Role(s) to User with PENDING ACTIVATION Workflow
  */
-const assignRoles = async ({ userId, roleIds, immediateActive = false }, actor) => {
+const assignRoles = async ({ userId, roleIds }, actor) => {
   if (!actor || !["SUPER_ADMIN", "ADMIN"].includes(actor.role)) {
+    await auditDeniedRoleAction(actor, userId, "UNAUTHORIZED_ROLE_ASSIGNMENT_ATTEMPT");
     throw new AppError("Only authorized administrators can assign staff roles.", 403, "ROLE_MANAGEMENT_DENIED");
+  }
+  if (userId === actor.userId) {
+    await auditDeniedRoleAction(actor, userId, "SELF_ROLE_ASSIGNMENT_ATTEMPT");
+    throw new AppError("You cannot assign roles to your own account.", 403, "SELF_ROLE_CHANGE_DENIED");
   }
 
   const targetUser = await repository.findUser(userId);
@@ -62,24 +93,38 @@ const assignRoles = async ({ userId, roleIds, immediateActive = false }, actor) 
         roleObj = await repository.findById(rId, tx).catch(() => null);
       }
       if (!roleObj) throw new NotFoundError(`Role '${rId}' not found`);
+      if (!roleObj.isActive) throw new AppError(`Role '${roleObj.name}' is inactive.`, 409, "ROLE_INACTIVE");
+
+      const existingAssignment = await tx.userRoleAssignment.findUnique({
+        where: { userId_roleId: { userId, roleId: roleObj.id } }
+      });
+      if (existingAssignment && existingAssignment.status === "ACTIVE") {
+        assignedRolesInfo.push({ roleId: roleObj.id, name: roleObj.name, status: existingAssignment.status, assignmentId: existingAssignment.id, existing: true });
+        continue;
+      }
+      if (existingAssignment?.status === "PENDING" && existingAssignment.activationExpiresAt > new Date()) {
+        assignedRolesInfo.push({ roleId: roleObj.id, name: roleObj.name, status: existingAssignment.status, assignmentId: existingAssignment.id, existing: true });
+        continue;
+      }
 
       // Enforce Max 3 Super Admins Limit
       if (roleObj.name === "SUPER_ADMIN") {
+        await repository.lockSuperAdminLimit(tx);
         if (actor.role !== "SUPER_ADMIN") {
           throw new AppError("Only an existing SUPER_ADMIN can assign the SUPER_ADMIN role.", 403, "ROLE_ESCALATION_DENIED");
         }
 
         const currentSuperAdminsCount = await repository.countActiveSuperAdmins(tx);
-        const existingAssignment = await repository.findUserRoleAssignment(userId, roleObj.id, "ACTIVE", tx);
-
-        if (!existingAssignment && targetUser.role !== "SUPER_ADMIN" && currentSuperAdminsCount >= MAX_SUPER_ADMINS) {
+        const alreadyCounted = targetUser.status === "ACTIVE" && targetUser.role === "SUPER_ADMIN";
+        if (!alreadyCounted && currentSuperAdminsCount >= MAX_SUPER_ADMINS) {
           audit(prisma, actor.userId, "SUPER_ADMIN_LIMIT_VIOLATION_ATTEMPT", "User", userId, `Attempted to create a 4th Super Admin for ${targetUser.fullName}`).catch(() => {});
           throw new AppError(`Maximum limit of ${MAX_SUPER_ADMINS} Super Admins has been reached. Cannot assign a 4th Super Admin.`, 409, "SUPER_ADMIN_LIMIT_EXCEEDED");
         }
       }
 
-      const status = immediateActive || roleObj.name === "SUPER_ADMIN" ? "ACTIVE" : "PENDING";
-      const activationToken = status === "PENDING" ? crypto.randomBytes(32).toString("hex") : null;
+      const status = "PENDING";
+      const activationToken = crypto.randomBytes(32).toString("hex");
+      const activationExpiresAt = new Date(Date.now() + ROLE_ACTIVATION_TTL_MS);
 
       const assignment = await tx.userRoleAssignment.upsert({
         where: { userId_roleId: { userId, roleId: roleObj.id } },
@@ -87,6 +132,10 @@ const assignRoles = async ({ userId, roleIds, immediateActive = false }, actor) 
           status,
           assignedBy: actor.userId,
           activationToken,
+          activationExpiresAt,
+          activatedBy: null,
+          activatedAt: null,
+          removedAt: null,
           assignedAt: new Date()
         },
         create: {
@@ -94,7 +143,8 @@ const assignRoles = async ({ userId, roleIds, immediateActive = false }, actor) 
           roleId: roleObj.id,
           status,
           assignedBy: actor.userId,
-          activationToken
+          activationToken,
+          activationExpiresAt
         }
       });
 
@@ -103,36 +153,36 @@ const assignRoles = async ({ userId, roleIds, immediateActive = false }, actor) 
   });
 
   // Create In-App Notification & Send Activation Email for Pending Roles
-  const pendingRoles = assignedRolesInfo.filter(r => r.status === "PENDING");
+  const pendingRoles = assignedRolesInfo.filter(r => r.status === "PENDING" && !r.existing);
   if (pendingRoles.length > 0) {
-    const roleNamesList = pendingRoles.map(r => r.name).join(", ");
-    const primaryToken = pendingRoles[0].token;
-    const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-    const activationUrl = `${frontendBaseUrl}/pages/auth/activate-role.html?token=${primaryToken}`;
-
-    try {
-      await prisma.notification.create({
-        data: {
-          userId,
-          type: "SYSTEM",
-          title: "New Role Assigned — Action Required",
-          message: `You have been assigned the role(s): ${roleNamesList}. Please click to activate your role permissions.`
-        }
-      });
-    } catch (err) {
-      followUpErrors.push(`Notification: ${err.message}`);
-    }
-
-    if (targetUser.email) {
+    await prisma.userSession.deleteMany({ where: { userId } });
+    for (const assignedRole of pendingRoles) {
       try {
-        await sendRoleAssignmentEmail({
-          to: targetUser.email,
-          name: targetUser.fullName,
-          roles: pendingRoles.map(r => r.name),
-          activationUrl
+        await prisma.notification.create({
+          data: {
+            userId,
+            type: "SYSTEM",
+            title: "New Role Assigned — Action Required",
+            message: `You have been assigned the role of ${assignedRole.name}. Activate this role to receive its permissions.`,
+            roleAssignmentId: assignedRole.assignmentId
+          }
         });
       } catch (err) {
-        followUpErrors.push(`Email delivery: ${err.message}`);
+        followUpErrors.push(`Notification: ${err.message}`);
+      }
+
+      if (targetUser.email) {
+        try {
+          const activationUrl = buildRoleActivationUrl(assignedRole.assignmentId);
+          await sendRoleAssignmentEmail({
+            to: targetUser.email,
+            name: targetUser.fullName,
+            roles: [assignedRole.name],
+            activationUrl
+          });
+        } catch (err) {
+          followUpErrors.push(`Email delivery: ${err.message}`);
+        }
       }
     }
   }
@@ -142,7 +192,7 @@ const assignRoles = async ({ userId, roleIds, immediateActive = false }, actor) 
   return {
     success: true,
     userId,
-    assignedRoles: assignedRolesInfo,
+    assignedRoles: assignedRolesInfo.map(({ token, ...role }) => role),
     warnings: followUpErrors
   };
 };
@@ -163,20 +213,101 @@ const activateRole = async ({ token, assignmentId }, actorUser) => {
 
   if (!assignment) throw new NotFoundError("Role activation token or assignment not found.");
 
-  if (actorUser.userId !== assignment.userId && !["SUPER_ADMIN", "ADMIN"].includes(actorUser.role)) {
+  if (actorUser.userId !== assignment.userId) {
     throw new AppError("You can only activate your own assigned role.", 403, "ACTIVATION_ACCESS_DENIED");
   }
 
-  if (assignment.status === "ACTIVE") {
-    return { success: true, message: "Role is already active.", assignment };
+  if (assignment.status !== "PENDING") {
+    throw new AppError("This role assignment is no longer pending.", 409, "ROLE_ASSIGNMENT_NOT_PENDING");
+  }
+  const now = new Date();
+  if (!assignment.activationExpiresAt || assignment.activationExpiresAt <= now) {
+    throw new AppError("This role activation has expired. Ask an administrator to assign the role again.", 410, "ROLE_ACTIVATION_EXPIRED");
   }
 
-  const activated = await repository.activateAssignment(assignment.id, actorUser.userId);
+  const activated = await prisma.$transaction(async (tx) => {
+    if (assignment.role.name === "SUPER_ADMIN") await repository.lockSuperAdminLimit(tx);
+    const update = await tx.userRoleAssignment.updateMany({
+      where: {
+        id: assignment.id,
+        userId: actorUser.userId,
+        status: "PENDING",
+        activationExpiresAt: { gt: now }
+      },
+      data: {
+        status: "ACTIVE",
+        activatedBy: actorUser.userId,
+        activatedAt: now,
+        activationToken: null
+      }
+    });
+    if (update.count !== 1) {
+      throw new AppError("This role assignment was already activated or has expired.", 409, "ROLE_ASSIGNMENT_NOT_PENDING");
+    }
 
-  // If user's primary role is default STAFF and new role is specialized, sync primary role
-  if (assignment.user.role === "STAFF" && assignment.role.name !== "STAFF") {
-    await repository.updateUserRole(assignment.userId, assignment.role.name);
-  }
+    if (Object.values(UserRole).includes(assignment.role.name)) {
+      await tx.user.update({ where: { id: assignment.userId }, data: { role: assignment.role.name } });
+    }
+
+    const nameParts = (assignment.user.fullName || "User").trim().split(/\s+/);
+    const firstName = nameParts[0] || "User";
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "Account";
+    if (assignment.role.name === "STUDENT") {
+      const existingStudent = await tx.student.findUnique({ where: { userId: assignment.userId } });
+      if (!existingStudent) {
+        const registrationNumber = await generateRegistrationNumber(tx, assignment.user.fullName || "Student User");
+        const defaultClass = await tx.class.findFirst({ where: { isActive: true } });
+        await tx.student.create({
+          data: {
+            userId: assignment.userId,
+            registrationNumber,
+            firstName,
+            lastName,
+            status: "ACTIVE",
+            currentClassId: defaultClass?.id || null,
+            admissionDate: now
+          }
+        });
+      } else if (existingStudent.status !== "ACTIVE") {
+        await tx.student.update({ where: { id: existingStudent.id }, data: { status: "ACTIVE" } });
+      }
+    } else if (assignment.role.name === "PARENT") {
+      const existingParent = await tx.parent.findUnique({ where: { userId: assignment.userId } });
+      if (!existingParent) await tx.parent.create({ data: { userId: assignment.userId, firstName, lastName } });
+    } else {
+      const existingStaff = await tx.staff.findUnique({ where: { userId: assignment.userId } });
+      if (!existingStaff) {
+        await tx.staff.create({
+          data: {
+            userId: assignment.userId,
+            staffNumber: `MTC/STF/${crypto.randomBytes(4).toString("hex").toUpperCase()}`,
+            firstName,
+            lastName,
+            jobTitle: assignment.role.name.split("_").map((word) => word[0] + word.slice(1).toLowerCase()).join(" "),
+            status: "ACTIVE",
+            employmentDate: now
+          }
+        });
+      }
+    }
+
+    await tx.notification.updateMany({
+      where: { userId: actorUser.userId, roleAssignmentId: assignment.id, status: "UNREAD" },
+      data: { status: "READ", readAt: now }
+    });
+    return tx.userRoleAssignment.findUnique({
+      where: { id: assignment.id },
+      select: {
+        id: true,
+        userId: true,
+        roleId: true,
+        status: true,
+        activatedBy: true,
+        activatedAt: true,
+        role: { select: { id: true, name: true, description: true } }
+      }
+    });
+  });
 
   await audit(prisma, actorUser.userId, "ROLE_ACTIVATED", "User", assignment.userId, `Activated role ${assignment.role.name}`);
 
@@ -192,6 +323,7 @@ const activateRole = async ({ token, assignmentId }, actorUser) => {
  */
 const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
   if (!actor || !["SUPER_ADMIN", "ADMIN"].includes(actor.role)) {
+    await auditDeniedRoleAction(actor, userId, "UNAUTHORIZED_ROLE_CHANGE_ATTEMPT");
     throw new AppError("Only authorized administrators can change staff roles.", 403, "ROLE_MANAGEMENT_DENIED");
   }
 
@@ -202,47 +334,117 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
     throw new AppError("You cannot modify your own administrative roles.", 403, "SELF_ROLE_CHANGE_DENIED");
   }
 
-  const newRoleNamesOrIds = Array.isArray(roles || roleIds) ? (roles || roleIds) : [roles || roleIds];
-
-  // Map to DB Role objects
+  const requestedRoles = roles !== undefined ? roles : roleIds;
+  const requestedNamesOrIds = requestedRoles == null ? [] : (Array.isArray(requestedRoles) ? requestedRoles : [requestedRoles]);
   const targetDbRoles = [];
-  for (const item of newRoleNamesOrIds) {
-    let r = await prisma.role.findUnique({ where: { name: item } });
-    if (!r) r = await prisma.role.findUnique({ where: { id: item } });
-    if (r) targetDbRoles.push(r);
+  const seenRoleIds = new Set();
+  for (const item of requestedNamesOrIds) {
+    let role = await prisma.role.findUnique({ where: { name: item } });
+    if (!role) role = await prisma.role.findUnique({ where: { id: item } });
+    if (!role) throw new NotFoundError(`Role '${item}' not found`);
+    if (!role.isActive) throw new AppError(`Role '${role.name}' is inactive.`, 409, "ROLE_INACTIVE");
+    if (!seenRoleIds.has(role.id)) targetDbRoles.push(role);
+    seenRoleIds.add(role.id);
   }
 
   const existingAssignments = await repository.findUserAssignments(userId);
-  const existingActiveRoleIds = existingAssignments.filter(a => a.status === "ACTIVE").map(a => a.roleId);
-  const targetRoleIds = targetDbRoles.map(r => r.id);
+  const existingByRoleId = new Map(existingAssignments.map((assignment) => [assignment.roleId, assignment]));
+  const targetRoleIds = new Set(targetDbRoles.map((role) => role.id));
+  const removedAssignments = existingAssignments.filter((assignment) =>
+    ["ACTIVE", "PENDING"].includes(assignment.status) && !targetRoleIds.has(assignment.roleId)
+  );
+  const addedRoles = targetDbRoles.filter((role) => {
+    const existing = existingByRoleId.get(role.id);
+    return !existing || existing.status === "REMOVED";
+  });
+  const newAssignments = [];
 
-  // Identify roles to remove
-  const rolesToRemove = existingAssignments.filter(a => !targetRoleIds.includes(a.roleId));
+  await prisma.$transaction(async (tx) => {
+    const changesSuperAdmin = removedAssignments.some((assignment) => assignment.role.name === "SUPER_ADMIN")
+      || addedRoles.some((role) => role.name === "SUPER_ADMIN");
+    if (changesSuperAdmin) await repository.lockSuperAdminLimit(tx);
 
-  for (const rem of rolesToRemove) {
-    if (rem.role.name === "SUPER_ADMIN") {
-      const activeSuperAdmins = await repository.countActiveSuperAdmins();
-      if (activeSuperAdmins <= 1) {
-        throw new AppError("The last active SUPER_ADMIN cannot be removed.", 409, "LAST_SUPER_ADMIN_PROTECTED");
+    if (removedAssignments.some((assignment) => assignment.role.name === "SUPER_ADMIN")
+      && await repository.countActiveSuperAdmins(tx) <= 1) {
+      throw new AppError("The last available SUPER_ADMIN cannot be removed.", 409, "LAST_SUPER_ADMIN_PROTECTED");
+    }
+
+    for (const role of addedRoles) {
+      if (role.name === "SUPER_ADMIN") {
+        if (actor.role !== "SUPER_ADMIN") throw new AppError("Only an existing SUPER_ADMIN can assign the SUPER_ADMIN role.", 403, "ROLE_ESCALATION_DENIED");
+        const count = await repository.countActiveSuperAdmins(tx);
+        const alreadyCounted = targetUser.status === "ACTIVE" && targetUser.role === "SUPER_ADMIN";
+        if (!alreadyCounted && count >= MAX_SUPER_ADMINS) {
+          throw new AppError(`Maximum limit of ${MAX_SUPER_ADMINS} Super Admins has been reached.`, 409, "SUPER_ADMIN_LIMIT_EXCEEDED");
+        }
+      }
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiry = new Date(Date.now() + ROLE_ACTIVATION_TTL_MS);
+      const assignment = await tx.userRoleAssignment.upsert({
+        where: { userId_roleId: { userId, roleId: role.id } },
+        update: {
+          status: "PENDING", assignedBy: actor.userId, activationToken: token,
+          activationExpiresAt: expiry, activatedBy: null, activatedAt: null,
+          removedAt: null, assignedAt: new Date()
+        },
+        create: {
+          userId, roleId: role.id, status: "PENDING", assignedBy: actor.userId,
+          activationToken: token, activationExpiresAt: expiry
+        }
+      });
+      newAssignments.push({ assignmentId: assignment.id, roleId: role.id, name: role.name, token });
+    }
+
+    for (const assignment of removedAssignments) {
+      await tx.userRoleAssignment.update({
+        where: { userId_roleId: { userId, roleId: assignment.roleId } },
+        data: { status: "REMOVED", removedAt: new Date(), activationToken: null, activationExpiresAt: null }
+      });
+      await tx.notification.updateMany({
+        where: { userId, roleAssignmentId: assignment.id, status: "UNREAD" },
+        data: { status: "READ", readAt: new Date() }
+      });
+    }
+
+    if (newAssignments.length || removedAssignments.length) {
+      await tx.userSession.deleteMany({ where: { userId } });
+    }
+
+    const activeAssignments = await tx.userRoleAssignment.findMany({
+      where: { userId, status: "ACTIVE" },
+      include: { role: true },
+      orderBy: { assignedAt: "asc" }
+    });
+    const nextPrimary = activeAssignments.find((assignment) => targetRoleIds.has(assignment.roleId));
+    const nextPrimaryName = nextPrimary?.role.name || "STAFF";
+    if (Object.values(UserRole).includes(nextPrimaryName)) {
+      await tx.user.update({ where: { id: userId }, data: { role: nextPrimaryName } });
+    }
+  });
+
+  const followUpErrors = [];
+  for (const assignment of newAssignments) {
+    try {
+      await prisma.notification.create({
+        data: {
+          userId,
+          roleAssignmentId: assignment.assignmentId,
+          type: "SYSTEM",
+          title: "New Role Assigned — Action Required",
+          message: `You have been assigned the role of ${assignment.name}. Activate this role to receive its permissions.`
+        }
+      });
+    } catch (error) {
+      followUpErrors.push(`Notification: ${error.message}`);
+    }
+    if (targetUser.email) {
+      try {
+        const activationUrl = buildRoleActivationUrl(assignment.assignmentId);
+        await sendRoleAssignmentEmail({ to: targetUser.email, name: targetUser.fullName, roles: [assignment.name], activationUrl });
+      } catch (error) {
+        followUpErrors.push(`Email delivery: ${error.message}`);
       }
     }
-    await repository.revoke({ userId, roleId: rem.roleId });
-  }
-
-  // Assign/Add new roles
-  const rolesToAdd = targetRoleIds.filter(id => !existingActiveRoleIds.includes(id));
-  let assignResult = null;
-  if (rolesToAdd.length > 0) {
-    assignResult = await assignRoles({ userId, roleIds: rolesToAdd, immediateActive: true }, actor);
-  }
-
-  // Set primary role on User object to top active role
-  const updatedActiveAssignments = await repository.findUserAssignments(userId);
-  const topActive = updatedActiveAssignments.find(a => a.status === "ACTIVE");
-  if (topActive) {
-    await repository.updateUserRole(userId, topActive.role.name);
-  } else {
-    await repository.updateUserRole(userId, "STAFF");
   }
 
   await audit(prisma, actor.userId, "CHANGE_USER_ROLES", "User", userId, `Updated roles for ${targetUser.fullName}`);
@@ -251,7 +453,7 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
     success: true,
     user: await repository.findUser(userId),
     assignments: await repository.findUserAssignments(userId),
-    assignResult
+    warnings: followUpErrors
   };
 };
 
@@ -263,5 +465,6 @@ module.exports = {
   remove,
   assignRoles,
   activateRole,
-  changeUserRoles
+  changeUserRoles,
+  buildRoleActivationUrl
 };

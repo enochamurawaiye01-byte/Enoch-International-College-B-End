@@ -5,8 +5,8 @@ async function runMailerDiagnostic() {
   console.log("=== STARTING MAILER SMTP DIAGNOSTIC TEST ===");
   console.log(`SMTP Host: ${process.env.SMTP_HOST || 'smtp.gmail.com'}`);
   console.log(`SMTP Port: ${process.env.SMTP_PORT || 587}`);
-  console.log(`SMTP User: ${process.env.SMTP_USER || 'Not set'}`);
-  console.log(`SMTP From: ${process.env.SMTP_FROM || 'Not set'}`);
+  console.log(`SMTP user configured: ${Boolean(process.env.SMTP_USER)}`);
+  console.log(`SMTP from configured: ${Boolean(process.env.SMTP_FROM || process.env.SMTP_USER)}`);
 
   const verification = await verifyTransporter();
   console.log("Verification Result:", verification);
@@ -16,8 +16,9 @@ async function runMailerDiagnostic() {
     return;
   }
 
-  const testRecipient = process.env.SMTP_USER || "mercytcollege@gmail.com";
-  console.log(`Sending diagnostic test email to <${testRecipient}>...`);
+  const testRecipient = process.env.MAILER_TEST_RECIPIENT || process.env.SMTP_USER;
+  if (!testRecipient) throw new Error("Configure MAILER_TEST_RECIPIENT or SMTP_USER as the test recipient.");
+  console.log(`Sending diagnostic test email to ${process.env.MAILER_TEST_RECIPIENT ? 'the configured test recipient' : 'the configured sender mailbox'}...`);
 
   const result = await sendEmail({
     to: testRecipient,
@@ -26,8 +27,17 @@ async function runMailerDiagnostic() {
     html: "<div style='font-family:sans-serif; padding:16px; border:1px solid #D8D2C6; background:#FAF7F2; border-radius:4px;'><h2 style='color:#0A192F;'>Mercy T College SMTP Test</h2><p style='color:#111111;'>If you received this message, the SMTP Mailer delivery pipeline is fully functional!</p></div>"
   });
 
-  console.log("Email Dispatch Result:", result);
+  console.log("SMTP message result:", JSON.stringify({
+    success: result.success,
+    messageId: result.messageId,
+    response: result.response,
+    acceptedCount: result.acceptedCount,
+    rejectedCount: result.rejectedCount,
+  }));
   console.log("=== DIAGNOSTIC COMPLETE ===");
 }
 
-runMailerDiagnostic();
+runMailerDiagnostic().catch((error) => {
+  console.error("[Mailer Diagnostic Failed]", error.message);
+  process.exitCode = 1;
+});

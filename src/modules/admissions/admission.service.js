@@ -5,7 +5,6 @@ const AppError = require("../../core/errors/AppError");
 const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./admission.repository");
 const { generateApplicationNumber } = require("./admission.utils");
-const klaviyoService = require("../klaviyo/klaviyo.service");
 const { sendApprovalEmail, sendRejectionEmail } = require("../../config/mailer");
 
 const getById = async (id) => {
@@ -64,31 +63,26 @@ const update = async (id, data, reviewerId) => {
 	// Dispatch Notification Email on status change
 	const fullName = `${admission.firstName} ${admission.lastName}`;
 	const recipientEmail = admission.email || data.email;
+	let communication = null;
 
-	if (data.status === "APPROVED" && recipientEmail) {
+	if (data.status === "APPROVED" && admission.status !== "APPROVED" && recipientEmail) {
+		communication = { email: false, errors: [] };
 		try {
-			await sendApprovalEmail({
+			const result = await sendApprovalEmail({
 				to: recipientEmail,
 				name: fullName,
 				role: "STUDENT",
 				registrationNumber: admission.applicationNumber
 			});
-			await klaviyoService.subscribeProfileToList({
-				email: recipientEmail,
-				firstName: admission.firstName,
-				lastName: admission.lastName,
-				phoneNumber: admission.phoneNumber || undefined
-			}).catch(() => {});
-			await klaviyoService.trackApprovalEvent({
-				email: recipientEmail,
-				firstName: admission.firstName,
-				lastName: admission.lastName,
-				role: "STUDENT",
-				registrationNumber: admission.applicationNumber
-			}).catch(() => {});
+			if (!result?.success) throw new Error("The mailer did not accept the admission approval email.");
+			communication.email = true;
+			communication.messageId = result.messageId;
 		} catch (emailErr) {
 			console.error("[Admission Approval Email Error]:", emailErr.message);
+			communication.errors.push("Application approved, but the approval email was not accepted by SMTP.");
 		}
+	} else if (data.status === "APPROVED" && admission.status !== "APPROVED") {
+		communication = { email: false, errors: ["Application approved, but no recipient email address is available."] };
 	} else if (data.status === "REJECTED" && recipientEmail) {
 		try {
 			await sendRejectionEmail({
@@ -100,7 +94,7 @@ const update = async (id, data, reviewerId) => {
 		}
 	}
 
-	return updated;
+	return communication ? { ...updated, communication } : updated;
 };
 
 const convertToStudent = async (id, data = {}) => {
@@ -167,30 +161,6 @@ const convertToStudent = async (id, data = {}) => {
 
 		await tx.admission.update({ where: { id }, data: { status: "CONVERTED", convertedStudentId: student.id, reviewedAt: new Date() } });
 		
-		if (email) {
-			klaviyoService.subscribeProfileToList({
-				email,
-				firstName: admission.firstName,
-				lastName: admission.lastName,
-				phoneNumber: admission.phoneNumber || undefined,
-			}).catch((err) => console.error("[Klaviyo admission sync error]:", err.message));
-
-			klaviyoService.trackApprovalEvent({
-				email,
-				firstName: admission.firstName,
-				lastName: admission.lastName,
-				role: "STUDENT",
-				registrationNumber,
-			}).catch((err) => console.error("[Klaviyo admission event error]:", err.message));
-
-			sendApprovalEmail({
-				to: email,
-				name: fullName,
-				role: "STUDENT",
-				registrationNumber
-			}).catch((err) => console.error("[Approval email dispatch error]:", err.message));
-		}
-
 		return student;
 	});
 };
