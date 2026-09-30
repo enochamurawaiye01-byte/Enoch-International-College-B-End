@@ -2,6 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const roleService = require("../../src/modules/roles/role.service");
 const roleRepository = require("../../src/modules/roles/role.repository");
+const userService = require("../../src/modules/users/user.service");
+const userRepository = require("../../src/modules/users/user.repository");
 const { prisma } = require("../../src/config/database");
 const { moduleActionForRequest } = require("../../src/core/middleware/authorization.middleware");
 
@@ -87,6 +89,51 @@ test("Access Control & Super Admin Protection Unit Tests", async (t) => {
       else process.env.NODE_ENV = originalNodeEnv;
       if (originalFrontendUrl === undefined) delete process.env.FRONTEND_URL;
       else process.env.FRONTEND_URL = originalFrontendUrl;
+    }
+  });
+
+  await t.test("user deletion should clean up the actual user-permission table without crashing", async () => {
+    const originalFindById = userRepository.findById;
+    const originalAuditCreate = prisma.auditLog.create;
+    const originalTransaction = prisma.$transaction;
+    const originalUserDelete = prisma.user.delete;
+
+    let txScope = null;
+
+    userRepository.findById = async () => ({
+      id: "user-123",
+      fullName: "Jane User",
+      email: "jane@example.com",
+      role: "STAFF",
+      roleAssignments: []
+    });
+
+    prisma.auditLog.create = async () => ({ id: "audit-1" });
+    prisma.user.delete = async () => ({ id: "user-123" });
+    prisma.$transaction = async (cb) => {
+      const tx = {
+        userRoleAssignment: { deleteMany: async () => ({ count: 0 }) },
+        userPermission: { deleteMany: async () => ({ count: 0 }) },
+        notification: { deleteMany: async () => ({ count: 0 }) },
+        student: { deleteMany: async () => ({ count: 0 }) },
+        staff: { deleteMany: async () => ({ count: 0 }) },
+        parent: { deleteMany: async () => ({ count: 0 }) },
+        user: { delete: async () => ({ id: "user-123" }) }
+      };
+      txScope = tx;
+      return cb(tx);
+    };
+
+    try {
+      const result = await userService.remove("user-123", { userId: "admin-1", role: "ADMIN" });
+
+      assert.equal(result.id, "user-123");
+      assert.equal(typeof txScope.userPermission.deleteMany, "function");
+    } finally {
+      userRepository.findById = originalFindById;
+      prisma.auditLog.create = originalAuditCreate;
+      prisma.$transaction = originalTransaction;
+      prisma.user.delete = originalUserDelete;
     }
   });
 });

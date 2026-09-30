@@ -233,7 +233,7 @@ const remove = async (id, actor) => {
       }
     }
     await tx.userRoleAssignment.deleteMany({ where: { userId: id } }).catch(() => {});
-    await tx.permissionGrant.deleteMany({ where: { userId: id } }).catch(() => {});
+    await tx.userPermission.deleteMany({ where: { userId: id } }).catch(() => {});
     await tx.notification.deleteMany({ where: { userId: id } }).catch(() => {});
     await tx.student.deleteMany({ where: { userId: id } }).catch(() => {});
     await tx.staff.deleteMany({ where: { userId: id } }).catch(() => {});
