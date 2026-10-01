@@ -69,10 +69,39 @@ const revoke = (data) => prisma.userRoleAssignment.update({
   data: { status: "REMOVED", removedAt: new Date() }
 });
 
-const findUser = (id) => prisma.user.findUnique({ where: { id } });
+const findUser = (id) => prisma.user.findUnique({ where: { id }, include: { student: { select: { id: true } } } });
 
 const lockSuperAdminLimit = async (tx) => {
   await tx.$queryRawUnsafe("WITH role_limit_lock AS MATERIALIZED (SELECT pg_advisory_xact_lock(7432196081)) SELECT 1::int AS locked FROM role_limit_lock");
+};
+
+const lockExclusiveRole = async (tx, roleName, schoolId) => {
+  await tx.$queryRawUnsafe(
+    "SELECT pg_advisory_xact_lock(hashtext($1), 0)",
+    `exclusive-role:${schoolId || "default"}:${roleName}`
+  );
+};
+
+const findExclusiveRoleHolder = async (tx, { roleId, roleName, userId, schoolId }) => {
+  const [assignment, primaryUser] = await Promise.all([
+    tx.userRoleAssignment.findFirst({
+      where: {
+        roleId,
+        userId: { not: userId },
+        user: { is: { schoolId } },
+        OR: [
+          { status: "ACTIVE" },
+          { status: "PENDING", activationExpiresAt: { gt: new Date() } }
+        ]
+      },
+      select: { userId: true }
+    }),
+    tx.user.findFirst({
+      where: { id: { not: userId }, schoolId, role: roleName, status: "ACTIVE" },
+      select: { id: true }
+    })
+  ]);
+  return assignment || primaryUser;
 };
 
 const countActiveSuperAdmins = (tx = prisma) => tx.user.count({
@@ -112,6 +141,8 @@ module.exports = {
   revoke,
   findUser,
   lockSuperAdminLimit,
+  lockExclusiveRole,
+  findExclusiveRoleHolder,
   countActiveSuperAdmins,
   updateUserRole
 };

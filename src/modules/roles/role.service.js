@@ -10,6 +10,17 @@ const generateRegistrationNumber = require("../../core/utils/generate-registrati
 
 const MAX_SUPER_ADMINS = 3;
 const ROLE_ACTIVATION_TTL_MS = 72 * 60 * 60 * 1000;
+const EXCLUSIVE_ROLE_NAMES = new Set([
+  "PRINCIPAL",
+  "VICE_PRINCIPAL",
+  "VICE_PRINCIPAL_ACADEMICS",
+  "VICE_PRINCIPAL_ADMIN",
+  "HEAD_TEACHER",
+  "DEPUTY_HEAD_TEACHER",
+  "SCHOOL_ADMINISTRATOR",
+  "BURSAR",
+  "REGISTRAR"
+]);
 const buildRoleActivationUrl = (assignmentId) => {
   const configuredUrl = process.env.FRONTEND_URL?.trim();
   if (!configuredUrl && process.env.NODE_ENV === "production") {
@@ -33,6 +44,7 @@ const auditDeniedRoleAction = (actor, userId, action) => audit(
   userId || null,
   "Unauthorized role-management attempt"
 );
+const isStudentAccount = (user) => user?.role === "STUDENT" || Boolean(user?.student);
 
 const getById = async (id) => {
   const role = await repository.findById(id);
@@ -80,6 +92,9 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
 
   const targetUser = await repository.findUser(userId);
   if (!targetUser) throw new NotFoundError("Target user not found");
+  if (isStudentAccount(targetUser)) {
+    throw new AppError("Students cannot be assigned system roles. Manage student prefect positions through Prefects.", 403, "STUDENT_SYSTEM_ROLE_DENIED");
+  }
 
   const normalizedRoleIds = Array.isArray(roleIds) ? roleIds : [roleIds];
   const assignedRolesInfo = [];
@@ -105,6 +120,19 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
       if (existingAssignment?.status === "PENDING" && existingAssignment.activationExpiresAt > new Date()) {
         assignedRolesInfo.push({ roleId: roleObj.id, name: roleObj.name, status: existingAssignment.status, assignmentId: existingAssignment.id, existing: true });
         continue;
+      }
+
+      if (EXCLUSIVE_ROLE_NAMES.has(roleObj.name)) {
+        await repository.lockExclusiveRole(tx, roleObj.name, targetUser.schoolId);
+        const existingHolder = await repository.findExclusiveRoleHolder(tx, {
+          roleId: roleObj.id,
+          roleName: roleObj.name,
+          userId,
+          schoolId: targetUser.schoolId
+        });
+        if (existingHolder) {
+          throw new AppError(`The ${roleObj.name.replaceAll("_", " ")} role is already assigned to another person in this school.`, 409, "ROLE_ALREADY_ASSIGNED");
+        }
       }
 
       // Enforce Max 3 Super Admins Limit
@@ -207,7 +235,7 @@ const activateRole = async ({ token, assignmentId }, actorUser) => {
   } else if (assignmentId) {
     assignment = await prisma.userRoleAssignment.findUnique({
       where: { id: assignmentId },
-      include: { role: true, user: true }
+      include: { role: true, user: { include: { student: { select: { id: true } } } } }
     });
   }
 
@@ -215,6 +243,9 @@ const activateRole = async ({ token, assignmentId }, actorUser) => {
 
   if (actorUser.userId !== assignment.userId) {
     throw new AppError("You can only activate your own assigned role.", 403, "ACTIVATION_ACCESS_DENIED");
+  }
+  if (isStudentAccount(assignment.user) && assignment.role.name !== "STUDENT") {
+    throw new AppError("Students cannot activate system roles. Manage student prefect positions through Prefects.", 403, "STUDENT_SYSTEM_ROLE_DENIED");
   }
 
   if (assignment.status !== "PENDING") {
@@ -227,6 +258,18 @@ const activateRole = async ({ token, assignmentId }, actorUser) => {
 
   const activated = await prisma.$transaction(async (tx) => {
     if (assignment.role.name === "SUPER_ADMIN") await repository.lockSuperAdminLimit(tx);
+    if (EXCLUSIVE_ROLE_NAMES.has(assignment.role.name)) {
+      await repository.lockExclusiveRole(tx, assignment.role.name, assignment.user.schoolId);
+      const existingHolder = await repository.findExclusiveRoleHolder(tx, {
+        roleId: assignment.roleId,
+        roleName: assignment.role.name,
+        userId: assignment.userId,
+        schoolId: assignment.user.schoolId
+      });
+      if (existingHolder) {
+        throw new AppError(`The ${assignment.role.name.replaceAll("_", " ")} role is already assigned to another person in this school.`, 409, "ROLE_ALREADY_ASSIGNED");
+      }
+    }
     const update = await tx.userRoleAssignment.updateMany({
       where: {
         id: assignment.id,
@@ -336,6 +379,9 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
 
   const requestedRoles = roles !== undefined ? roles : roleIds;
   const requestedNamesOrIds = requestedRoles == null ? [] : (Array.isArray(requestedRoles) ? requestedRoles : [requestedRoles]);
+  if (isStudentAccount(targetUser) && requestedNamesOrIds.length) {
+    throw new AppError("Students cannot be assigned system roles. Manage student prefect positions through Prefects.", 403, "STUDENT_SYSTEM_ROLE_DENIED");
+  }
   const targetDbRoles = [];
   const seenRoleIds = new Set();
   for (const item of requestedNamesOrIds) {
@@ -360,6 +406,27 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
   const newAssignments = [];
 
   await prisma.$transaction(async (tx) => {
+    const exclusiveRolesToLock = [...new Map(
+      [...addedRoles, ...removedAssignments.map((assignment) => assignment.role)]
+        .filter((role) => EXCLUSIVE_ROLE_NAMES.has(role.name))
+        .map((role) => [role.name, role])
+    ).values()].sort((left, right) => left.name.localeCompare(right.name));
+    for (const role of exclusiveRolesToLock) {
+      await repository.lockExclusiveRole(tx, role.name, targetUser.schoolId);
+    }
+
+    for (const role of addedRoles.filter((item) => EXCLUSIVE_ROLE_NAMES.has(item.name))) {
+      const existingHolder = await repository.findExclusiveRoleHolder(tx, {
+        roleId: role.id,
+        roleName: role.name,
+        userId,
+        schoolId: targetUser.schoolId
+      });
+      if (existingHolder) {
+        throw new AppError(`The ${role.name.replaceAll("_", " ")} role is already assigned to another person in this school.`, 409, "ROLE_ALREADY_ASSIGNED");
+      }
+    }
+
     const changesSuperAdmin = removedAssignments.some((assignment) => assignment.role.name === "SUPER_ADMIN")
       || addedRoles.some((role) => role.name === "SUPER_ADMIN");
     if (changesSuperAdmin) await repository.lockSuperAdminLimit(tx);

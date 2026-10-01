@@ -66,6 +66,104 @@ test("Access Control & Super Admin Protection Unit Tests", async (t) => {
     }
   });
 
+  await t.test("should reject system-role grants to linked student profiles", async () => {
+    const originalFindUser = roleRepository.findUser;
+    roleRepository.findUser = async (id) => ({ id, role: "STAFF", schoolId: "school-1", student: { id: "student-profile-1" } });
+
+    try {
+      const actor = { userId: "admin-1", role: "ADMIN" };
+      await assert.rejects(
+        roleService.assignRoles({ userId: "student-1", roleIds: ["PREFECT"] }, actor),
+        (error) => error.code === "STUDENT_SYSTEM_ROLE_DENIED"
+      );
+      await assert.rejects(
+        roleService.changeUserRoles("student-1", { roles: ["TEACHER"] }, actor),
+        (error) => error.code === "STUDENT_SYSTEM_ROLE_DENIED"
+      );
+    } finally {
+      roleRepository.findUser = originalFindUser;
+    }
+  });
+
+  await t.test("should reject a leadership role already held by another user", async () => {
+    const originalFindUser = roleRepository.findUser;
+    const originalFindByName = roleRepository.findByName;
+    const originalLockRole = roleRepository.lockExclusiveRole;
+    const originalFindExclusiveHolder = roleRepository.findExclusiveRoleHolder;
+    const originalTransaction = prisma.$transaction;
+
+    roleRepository.findUser = async (id) => ({ id, role: "STAFF", schoolId: "school-1" });
+    roleRepository.findByName = async () => ({ id: "principal-role-id", name: "PRINCIPAL", isActive: true });
+    roleRepository.lockExclusiveRole = async () => {};
+    roleRepository.findExclusiveRoleHolder = async () => ({ userId: "existing-principal" });
+    prisma.$transaction = async (callback) => callback({
+      userRoleAssignment: { findUnique: async () => null }
+    });
+
+    try {
+      await assert.rejects(
+        roleService.assignRoles({ userId: "candidate-1", roleIds: ["PRINCIPAL"] }, { userId: "admin-1", role: "ADMIN" }),
+        (error) => error.code === "ROLE_ALREADY_ASSIGNED" && error.statusCode === 409
+      );
+    } finally {
+      roleRepository.findUser = originalFindUser;
+      roleRepository.findByName = originalFindByName;
+      roleRepository.lockExclusiveRole = originalLockRole;
+      roleRepository.findExclusiveRoleHolder = originalFindExclusiveHolder;
+      prisma.$transaction = originalTransaction;
+    }
+  });
+
+  await t.test("should reject exclusive leadership role changes when another holder exists", async () => {
+    const originalFindUser = roleRepository.findUser;
+    const originalFindByName = roleRepository.findByName;
+    const originalFindAssignments = roleRepository.findUserAssignments;
+    const originalLockRole = roleRepository.lockExclusiveRole;
+    const originalFindExclusiveHolder = roleRepository.findExclusiveRoleHolder;
+    const originalTransaction = prisma.$transaction;
+
+    roleRepository.findUser = async (id) => ({ id, role: "STAFF", schoolId: "school-1" });
+    roleRepository.findByName = async () => ({ id: "principal-role-id", name: "PRINCIPAL", isActive: true });
+    roleRepository.findUserAssignments = async () => [];
+    roleRepository.lockExclusiveRole = async () => {};
+    roleRepository.findExclusiveRoleHolder = async () => ({ userId: "existing-principal" });
+    prisma.$transaction = async (callback) => callback({});
+
+    try {
+      await assert.rejects(
+        roleService.changeUserRoles("candidate-1", { roles: ["PRINCIPAL"] }, { userId: "admin-1", role: "ADMIN" }),
+        (error) => error.code === "ROLE_ALREADY_ASSIGNED" && error.statusCode === 409
+      );
+    } finally {
+      roleRepository.findUser = originalFindUser;
+      roleRepository.findByName = originalFindByName;
+      roleRepository.findUserAssignments = originalFindAssignments;
+      roleRepository.lockExclusiveRole = originalLockRole;
+      roleRepository.findExclusiveRoleHolder = originalFindExclusiveHolder;
+      prisma.$transaction = originalTransaction;
+    }
+  });
+
+  await t.test("should reject activation of a non-student role by a student account", async () => {
+    const originalFindAssignment = prisma.userRoleAssignment.findUnique;
+    prisma.userRoleAssignment.findUnique = async () => ({
+      id: "assignment-1",
+      userId: "student-1",
+      status: "PENDING",
+      role: { id: "teacher-role-id", name: "TEACHER" },
+      user: { id: "student-1", role: "STAFF", student: { id: "student-profile-1" } }
+    });
+
+    try {
+      await assert.rejects(
+        roleService.activateRole({ assignmentId: "assignment-1" }, { userId: "student-1" }),
+        (error) => error.code === "STUDENT_SYSTEM_ROLE_DENIED"
+      );
+    } finally {
+      prisma.userRoleAssignment.findUnique = originalFindAssignment;
+    }
+  });
+
   await t.test("should generate pending role assignment token structure", async () => {
     const crypto = require("crypto");
     const token = crypto.randomBytes(32).toString("hex");

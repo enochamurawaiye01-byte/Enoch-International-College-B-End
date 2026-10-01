@@ -19,7 +19,8 @@ const findAll = (where, skip, take) => prisma.user.findMany({
 	take,
 	select: {
 		...publicUserSelect,
-		roleAssignments: roleAssignmentsSelect
+		roleAssignments: roleAssignmentsSelect,
+		student: { select: { id: true } }
 	},
 	orderBy: { createdAt: "desc" }
 });

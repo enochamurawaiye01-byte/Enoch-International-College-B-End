@@ -50,7 +50,7 @@ const sendEmail = async ({ to, subject, html, text }) => {
   }
 
   const activeTransporter = getTransporter();
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER || "mercytcollege@gmail.com";
+  const from = process.env.SMTP_MAIL || process.env.SMTP_FROM || process.env.SMTP_USER || "mercytcollege@gmail.com";
 
   if (!activeTransporter) {
     throw new Error("Email delivery is not configured. Set SMTP_USER and SMTP_PASSWORD in the server environment.");
