@@ -7,6 +7,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "test": "node --test tests/unit/*.test.js",
+    "test:integration": "node --test tests/integration/*.integration.test.js",
     "seed:demo": "node prisma/seed-demo-school.js",
     "provision:admin": "node prisma/provision-admin.js"
 

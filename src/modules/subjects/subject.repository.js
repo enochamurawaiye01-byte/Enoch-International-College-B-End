@@ -9,8 +9,10 @@ const createSubject = async (data) => {
 };
 
 // Get all subjects
-const findAllSubjects = async () => {
+const findAllSubjects = async (where) => {
     return prisma.subject.findMany({
+        where,
+        include: { department: true },
         orderBy: {
             name: "asc",
         },
@@ -23,6 +25,7 @@ const findSubjectById = async (id) => {
         where: {
             id,
         },
+        include: { department: true },
     });
 };
 
@@ -79,6 +82,20 @@ const findSubjectUsage = async (id) => {
     });
 };
 
+const findDepartment = (id) => prisma.department.findUnique({ where: { id } });
+const findTeacherSubjectIds = async (userId) => {
+    const staff = await prisma.staff.findUnique({ where: { userId }, select: { id: true } });
+    if (!staff) return [];
+    const [subjectAssignments, classTeacherAssignments] = await Promise.all([
+        prisma.teacherAssignment.findMany({ where: { staffId: staff.id }, select: { subjectId: true } }),
+        prisma.classTeacherAssignment.findMany({ where: { staffId: staff.id }, include: { class: { include: { classSubjects: { select: { subjectId: true } } } } } })
+    ]);
+    return [...new Set([
+        ...subjectAssignments.map((assignment) => assignment.subjectId),
+        ...classTeacherAssignments.flatMap((assignment) => assignment.class.classSubjects.map((subject) => subject.subjectId))
+    ])];
+};
+
 // Delete subject
 const deleteSubject = async (id) => {
     return prisma.subject.delete({
@@ -96,5 +113,7 @@ module.exports = {
     findSubjectByCode,
     updateSubject,
     findSubjectUsage,
+    findDepartment,
+    findTeacherSubjectIds,
     deleteSubject,
 };

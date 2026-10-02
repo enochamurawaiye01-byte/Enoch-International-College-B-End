@@ -20,7 +20,7 @@ const createClass = async (req, res, next) => {
 // Get all classes
 const getAllClasses = async (req, res, next) => {
     try {
-        const classes = await classService.getAllClasses();
+        const classes = await classService.getAllClasses(req.user);
 
         return res.status(200).json({
             success: true,
@@ -31,12 +31,18 @@ const getAllClasses = async (req, res, next) => {
     }
 };
 
+const getClassLevels = async (req, res, next) => {
+    try {
+        return res.json({ success: true, data: await classService.getClassLevels() });
+    } catch (error) {
+        next(error);
+    }
+};
+
 // Get class by ID
 const getClassById = async (req, res, next) => {
     try {
-        const schoolClass = await classService.getClassById(
-            req.params.id
-        );
+        const schoolClass = await classService.getClassById(req.params.id, req.user);
 
         return res.status(200).json({
             success: true,
@@ -66,6 +72,7 @@ const updateClass = async (req, res, next) => {
 };
 
 const getStudents = async (req, res, next) => { try { return res.json({ success: true, data: await classService.getStudents(req.params.id, req.user) }); } catch (error) { next(error); } };
+const getClassArms = async (req, res, next) => { try { return res.json({ success: true, data: await classService.getClassArms(req.params.id, req.user) }); } catch (error) { next(error); } };
 
 // Delete class
 const deleteClass = async (req, res, next) => {
@@ -84,8 +91,10 @@ const deleteClass = async (req, res, next) => {
 module.exports = {
     createClass,
     getAllClasses,
+    getClassLevels,
     getClassById,
     updateClass,
     deleteClass,
     getStudents,
+    getClassArms,
 };

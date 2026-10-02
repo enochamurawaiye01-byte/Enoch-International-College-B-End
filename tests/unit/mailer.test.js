@@ -1,6 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { sendEmail } = require("../../src/config/mailer");
+const nodemailer = require("nodemailer");
+const mailer = require("../../src/config/mailer");
+const { sendEmail } = mailer;
 
 test("mailer reports missing SMTP configuration as a failure", async () => {
   const originalUser = process.env.SMTP_USER;
@@ -33,4 +35,85 @@ test("mailer rejects a malformed recipient before opening SMTP", async () => {
     sendEmail({ to: "not-an-email", subject: "Test", text: "Test" }),
     /valid email recipient is required/
   );
+});
+
+test("professional school emails include the correct account and role identifiers", async () => {
+  const originalCreateTransport = nodemailer.createTransport;
+  const originalUser = process.env.SMTP_USER;
+  const originalPassword = process.env.SMTP_PASSWORD;
+  const originalPort = process.env.SMTP_PORT;
+  const messages = [];
+
+  process.env.SMTP_USER = "mailer-test@school.invalid";
+  process.env.SMTP_PASSWORD = "test-only-password";
+  process.env.SMTP_PORT = "465";
+  nodemailer.createTransport = () => ({
+    sendMail: async (message) => {
+      messages.push(message);
+      return { messageId: "unit-test-message", response: "250 OK", accepted: [message.to], rejected: [] };
+    }
+  });
+
+  try {
+    await mailer.studentApplicationApproved({
+      to: "student@school.invalid",
+      name: "Amina Student",
+      username: "student@school.invalid",
+      applicationNumber: "APP-2026-001"
+    });
+    await mailer.studentAdmissionApproved({
+      to: "student@school.invalid",
+      name: "Amina Student",
+      username: "student@school.invalid",
+      registrationNumber: "MTC/STU/2026/001",
+      classOrProgramme: "Primary 4"
+    });
+    await mailer.teacherAccountApproved({
+      to: "teacher@school.invalid",
+      name: "Daniel Teacher",
+      username: "teacher@school.invalid",
+      staffId: "MTC/STF/2026/001",
+      role: "CLASS_TEACHER"
+    });
+    await mailer.sendRoleAssignmentEmail({
+      to: "teacher@school.invalid",
+      name: "Daniel Teacher",
+      username: "teacher@school.invalid",
+      staffId: "MTC/STF/2026/001",
+      roles: ["HEAD_TEACHER"],
+      activationUrl: "https://school.invalid/activate-role.html?assignmentId=assignment-1"
+    });
+    await mailer.sendRoleActivatedEmail({
+      to: "teacher@school.invalid",
+      name: "Daniel Teacher",
+      username: "teacher@school.invalid",
+      staffId: "MTC/STF/2026/001",
+      role: "HEAD_TEACHER"
+    });
+
+    assert.equal(messages.length, 5);
+    assert.ok(messages.every((message) => typeof message.html === "string" && typeof message.text === "string"));
+    assert.equal(messages[0].to, "student@school.invalid");
+    assert.match(messages[0].text, /Application reference: APP-2026-001/);
+    assert.match(messages[0].text, /Account username: student@school\.invalid/);
+    assert.doesNotMatch(messages[0].text, /Registration number:/);
+    assert.equal(messages[1].to, "student@school.invalid");
+    assert.match(messages[1].text, /Registration number: MTC\/STU\/2026\/001/);
+    assert.match(messages[1].text, /Account username: student@school\.invalid/);
+    assert.equal(messages[2].to, "teacher@school.invalid");
+    assert.match(messages[2].text, /Staff ID: MTC\/STF\/2026\/001/);
+    assert.match(messages[2].text, /Position: Class Teacher/);
+    assert.equal(messages[3].to, "teacher@school.invalid");
+    assert.match(messages[3].text, /HEAD_TEACHER|Head Teacher/);
+    assert.match(messages[3].text, /Pending activation/);
+    assert.match(messages[4].text, /Your Head Teacher role .* has been activated/);
+  } finally {
+    nodemailer.createTransport = originalCreateTransport;
+    if (originalUser === undefined) delete process.env.SMTP_USER;
+    else process.env.SMTP_USER = originalUser;
+    if (originalPassword === undefined) delete process.env.SMTP_PASSWORD;
+    else process.env.SMTP_PASSWORD = originalPassword;
+    if (originalPort === undefined) delete process.env.SMTP_PORT;
+    else process.env.SMTP_PORT = originalPort;
+  }
 });

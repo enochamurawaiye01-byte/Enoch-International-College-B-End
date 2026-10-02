@@ -1,6 +1,15 @@
 // Auth controller
 const authService = require("./auth.service");
 
+const getRegistrationOptions = async (req, res, next) => {
+    try {
+        const data = await authService.getPublicRegistrationOptions();
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
 const register = async (req, res, next) => {
     try {
         const result = await authService.register(req.body);
@@ -104,6 +113,7 @@ const refreshToken = async (req, res, next) => {
 };
 
 module.exports = {
+    getRegistrationOptions,
     register,
     login,
     refreshToken,

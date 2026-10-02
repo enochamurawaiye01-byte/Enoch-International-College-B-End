@@ -2,6 +2,7 @@ const AppError = require("../../core/errors/AppError");
 
 const classRepository = require("./class.repository");
 const { CLASS_ERRORS } = require("./class.constants");
+const { hasPermission } = require("../../core/middleware/authorization.middleware");
 
 // Create a class/arm
 const createClass = async (data) => {
@@ -48,12 +49,15 @@ const createClass = async (data) => {
 };
 
 // Get all classes
-const getAllClasses = async () => {
-    return classRepository.findAllClasses();
+const getAllClasses = async (user) => {
+    const classIds = user?.role === "TEACHER" ? await classRepository.findTeacherClassIds(user.userId) : undefined;
+    return classRepository.findAllClasses(classIds);
 };
 
+const getClassLevels = () => classRepository.findAllClassLevels();
+
 // Get one class
-const getClassById = async (id) => {
+const getClassById = async (id, user) => {
     const schoolClass =
         await classRepository.findClassById(id);
 
@@ -64,8 +68,16 @@ const getClassById = async (id) => {
             "CLASS_NOT_FOUND"
         );
     }
+    if (user?.role === "TEACHER" && !(await classRepository.findTeacherAssignment(user.userId, id))) {
+        throw new AppError("You are not assigned to this class.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
+    }
 
     return schoolClass;
+};
+
+const getClassArms = async (id, user) => {
+    const schoolClass = await getClassById(id, user);
+    return classRepository.findClassesByLevel(schoolClass.classLevelId);
 };
 
 // Update class
@@ -154,9 +166,9 @@ const updateClass = async (id, data) => {
 
 // Delete class
 const getStudents = async (id, user) => {
-    if (user.role === "TEACHER" && !(await classRepository.findTeacherAssignment(user.userId, id))) {
-        throw new AppError("You are not assigned to this class.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
-    }
+	if (["STUDENT", "PARENT"].includes(user?.role)) throw new AppError("You cannot view a class roster.", 403, "CLASS_ROSTER_ACCESS_DENIED");
+    if (!(await hasPermission(user, "classes:view"))) throw new AppError("You cannot view this class roster.", 403, "CLASS_ROSTER_ACCESS_DENIED");
+    await getClassById(id, user);
     return classRepository.findStudents(id);
 };
 
@@ -197,7 +209,9 @@ const deleteClass = async (id) => {
 module.exports = {
     createClass,
     getAllClasses,
+    getClassLevels,
     getClassById,
+    getClassArms,
     updateClass,
     deleteClass,
     getStudents,

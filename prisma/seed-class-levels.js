@@ -52,6 +52,18 @@ async function main() {
             create: level,
         });
 
+        const existingArm = await prisma.class.findFirst({ where: { classLevelId: result.id }, select: { id: true } });
+        if (!existingArm) {
+            await prisma.class.create({
+                data: {
+                    classLevelId: result.id,
+                    name: `${result.name} A`,
+                    arm: "A",
+                    isActive: true
+                }
+            });
+        }
+
         console.log(`✓ ${result.name}`);
     }
 

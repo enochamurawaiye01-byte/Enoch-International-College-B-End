@@ -31,7 +31,7 @@ const assign = (data) => prisma.userRoleAssignment.upsert({
 
 const findAssignmentByToken = (activationToken) => prisma.userRoleAssignment.findUnique({
   where: { activationToken },
-  include: { role: true, user: true }
+  include: { role: true, user: { include: { student: { select: { id: true } }, staff: { select: { staffNumber: true } } } } }
 });
 
 const findUserAssignments = (userId) => prisma.userRoleAssignment.findMany({
@@ -69,7 +69,10 @@ const revoke = (data) => prisma.userRoleAssignment.update({
   data: { status: "REMOVED", removedAt: new Date() }
 });
 
-const findUser = (id) => prisma.user.findUnique({ where: { id }, include: { student: { select: { id: true } } } });
+const findUser = (id) => prisma.user.findUnique({
+  where: { id },
+  include: { student: { select: { id: true } }, staff: { select: { staffNumber: true } } }
+});
 
 const lockSuperAdminLimit = async (tx) => {
   await tx.$queryRawUnsafe("WITH role_limit_lock AS MATERIALIZED (SELECT pg_advisory_xact_lock(7432196081)) SELECT 1::int AS locked FROM role_limit_lock");

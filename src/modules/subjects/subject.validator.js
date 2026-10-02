@@ -23,6 +23,8 @@ const createSubjectSchema = z
             .max(500, "Description is too long.")
             .optional(),
 
+        departmentId: z.string().uuid("Department ID must be valid.").nullable().optional(),
+
         isActive: z
             .boolean()
             .optional()
@@ -53,6 +55,8 @@ const updateSubjectSchema = z
             .trim()
             .max(500, "Description is too long.")
             .optional(),
+
+        departmentId: z.string().uuid("Department ID must be valid.").nullable().optional(),
 
         isActive: z
             .boolean()

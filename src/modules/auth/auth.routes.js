@@ -15,6 +15,8 @@ const {
 
 const router = express.Router();
 
+router.get("/registration-options", controller.getRegistrationOptions);
+
 router.post(
     "/register",
     authLimiter,

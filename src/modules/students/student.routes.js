@@ -18,9 +18,10 @@ router.get(
 router.post("/me/profile-picture", authenticate, upload.single("file"), controller.updateProfileImage);
 
 const adminOnly = requireRoles("ADMIN", "SUPER_ADMIN");
+const studentReaders = requireRoles("ADMIN", "SUPER_ADMIN", "TEACHER", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER");
 router.post("/", authenticate, adminOnly, validate(createStudentSchema), controller.createStudent);
-router.get("/", authenticate, adminOnly, controller.getAllStudents);
-router.get("/:id", authenticate, adminOnly, controller.getStudentById);
+router.get("/", authenticate, studentReaders, controller.getAllStudents);
+router.get("/:id", authenticate, studentReaders, controller.getStudentById);
 router.patch("/:id", authenticate, adminOnly, validate(updateStudentSchema), controller.updateStudent);
 
 router.get(

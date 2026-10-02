@@ -33,21 +33,28 @@ const createSubject = async (data) => {
         );
     }
 
+    if (data.departmentId && !(await subjectRepository.findDepartment(data.departmentId))) throw new AppError("Department not found.", 404, "DEPARTMENT_NOT_FOUND");
+
     return subjectRepository.createSubject({
         name,
         code,
         description: data.description || null,
+        departmentId: data.departmentId || null,
         isActive: data.isActive ?? true,
     });
 };
 
 // Get all subjects
-const getAllSubjects = async () => {
+const getAllSubjects = async (user) => {
+    if (user?.role === "TEACHER") {
+        const subjectIds = await subjectRepository.findTeacherSubjectIds(user.userId);
+        return subjectRepository.findAllSubjects({ id: { in: subjectIds }, isActive: true });
+    }
     return subjectRepository.findAllSubjects();
 };
 
 // Get subject by ID
-const getSubjectById = async (id) => {
+const getSubjectById = async (id, user) => {
     const subject =
         await subjectRepository.findSubjectById(id);
 
@@ -57,6 +64,10 @@ const getSubjectById = async (id) => {
             404,
             "SUBJECT_NOT_FOUND"
         );
+    }
+
+    if (user?.role === "TEACHER" && !(await subjectRepository.findTeacherSubjectIds(user.userId)).includes(subject.id)) {
+        throw new AppError("You are not assigned to this subject.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
     }
 
     return subject;
@@ -127,6 +138,11 @@ const updateSubject = async (id, data) => {
     if (data.description !== undefined) {
         updateData.description =
             data.description || null;
+    }
+
+    if (data.departmentId !== undefined) {
+        if (data.departmentId && !(await subjectRepository.findDepartment(data.departmentId))) throw new AppError("Department not found.", 404, "DEPARTMENT_NOT_FOUND");
+        updateData.departmentId = data.departmentId || null;
     }
 
     // Update active status

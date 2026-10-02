@@ -22,7 +22,7 @@ const createSubject = async (req, res, next) => {
 const getAllSubjects = async (req, res, next) => {
     try {
         const subjects =
-            await subjectService.getAllSubjects();
+            await subjectService.getAllSubjects(req.user);
 
         return res.status(200).json({
             success: true,
@@ -38,7 +38,8 @@ const getSubjectById = async (req, res, next) => {
     try {
         const subject =
             await subjectService.getSubjectById(
-                req.params.id
+                req.params.id,
+                req.user
             );
 
         return res.status(200).json({

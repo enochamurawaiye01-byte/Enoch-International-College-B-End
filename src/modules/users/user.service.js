@@ -59,13 +59,75 @@ const changeRole = async (id, role, actor) => {
   return roleService.changeUserRoles(id, { roles: [role] }, actor);
 };
 
+const activateStudentApplication = async (target) => prisma.$transaction(async (tx) => {
+  await tx.user.updateMany({ where: { id: target.id, status: target.status }, data: { status: "ACTIVE" } });
+  const student = await tx.student.findUnique({ where: { userId: target.id } });
+  if (!student?.currentClassId) throw new AppError("A student profile and class selection are required before approval.", 409, "STUDENT_PROFILE_INCOMPLETE");
+  if (!target.email) throw new AppError("A student email is required before approval.", 409, "STUDENT_EMAIL_REQUIRED");
+
+  const schoolClass = await tx.class.findFirst({
+    where: { id: student.currentClassId, isActive: true },
+    include: { classLevel: true },
+  });
+  if (!schoolClass) throw new AppError("The selected class is no longer active.", 409, "STUDENT_CLASS_UNAVAILABLE");
+
+  const isSeniorSecondary = schoolClass.classLevel.code.startsWith("SS");
+  if (isSeniorSecondary && !student.desiredDepartmentId) throw new AppError("A department is required for senior secondary students.", 409, "STUDENT_DEPARTMENT_REQUIRED");
+  if (student.desiredDepartmentId && !(await tx.department.findUnique({ where: { id: student.desiredDepartmentId } }))) {
+    throw new AppError("The selected department no longer exists.", 409, "STUDENT_DEPARTMENT_UNAVAILABLE");
+  }
+
+  const session = await tx.academicSession.findFirst({
+    where: { isActive: true, ...(target.schoolId ? { schoolId: target.schoolId } : {}) },
+    include: { terms: { where: { isActive: true }, orderBy: { startDate: "desc" }, take: 1 } },
+    orderBy: { startDate: "desc" },
+  });
+  const term = session?.terms[0];
+  if (!session || !term) throw new AppError("An active academic session and term are required before approval.", 409, "ACTIVE_ACADEMIC_TERM_REQUIRED");
+
+  const registrationNumber = student.registrationNumber || await generateRegistrationNumber(tx, target.fullName || "Student User");
+  await tx.student.update({
+    where: { id: student.id },
+    data: {
+      registrationNumber: student.registrationNumber || registrationNumber,
+      status: "ACTIVE",
+      currentClassId: schoolClass.id,
+      currentSessionId: session.id,
+      currentTerm: term.name,
+      admissionDate: student.admissionDate || new Date(),
+    },
+  });
+
+  const departmentId = isSeniorSecondary ? student.desiredDepartmentId : null;
+  const enrollment = await tx.enrollment.upsert({
+    where: { studentId_sessionId_termId: { studentId: student.id, sessionId: session.id, termId: term.id } },
+    update: { classId: schoolClass.id, departmentId, status: "ACTIVE" },
+    create: { studentId: student.id, sessionId: session.id, termId: term.id, classId: schoolClass.id, departmentId, status: "ACTIVE" },
+  });
+  const classSubjects = await tx.classSubject.findMany({
+    where: { classId: schoolClass.id, subject: { isActive: true } },
+    include: { subject: true },
+  });
+  const applicableSubjects = classSubjects.filter(({ subject }) => !isSeniorSecondary || !subject.departmentId || subject.departmentId === departmentId);
+  if (applicableSubjects.length) {
+    await tx.studentSubjectEnrollment.createMany({
+      data: applicableSubjects.map(({ id }) => ({ enrollmentId: enrollment.id, classSubjectId: id })),
+      skipDuplicates: true,
+    });
+  }
+  return registrationNumber;
+});
+
 const changeStatus = async (id, status, actor) => {
   assertAdmin(actor);
   const target = await getById(id);
   if (id === actor.userId && status !== "ACTIVE") throw new AppError("You cannot deactivate your own account.", 403, "SELF_DISABLE_DENIED");
   const targetHasSuperAdmin = target.role === "SUPER_ADMIN"
     || target.roleAssignments?.some((assignment) => assignment.role?.name === "SUPER_ADMIN" && ["ACTIVE", "PENDING"].includes(assignment.status));
-  if (targetHasSuperAdmin && status !== "ACTIVE") {
+  let assignedRegNumber = null;
+  if (status === "ACTIVE" && target.role === "STUDENT") {
+    assignedRegNumber = await activateStudentApplication(target);
+  } else if (targetHasSuperAdmin && status !== "ACTIVE") {
     await prisma.$transaction(async (tx) => {
       await roleRepository.lockSuperAdminLimit(tx);
       if (await roleRepository.countActiveSuperAdmins(tx) <= 1) {
@@ -77,8 +139,6 @@ const changeStatus = async (id, status, actor) => {
     await repository.update(id, { status });
   }
 
-  let assignedRegNumber = null;
-
   if (status === "ACTIVE") {
     const nameParts = (target.fullName || "User").trim().split(/\s+/);
     const firstName = nameParts[0] || "User";
@@ -86,24 +146,7 @@ const changeStatus = async (id, status, actor) => {
 
     if (target.role === "STUDENT") {
       const existingStudent = await prisma.student.findUnique({ where: { userId: id } });
-      if (!existingStudent) {
-        assignedRegNumber = await generateRegistrationNumber(prisma, target.fullName || "Student User");
-        const defaultClass = await prisma.class.findFirst({ where: { isActive: true } });
-        await prisma.student.create({
-          data: {
-            userId: id,
-            registrationNumber: assignedRegNumber,
-            firstName,
-            lastName,
-            status: "ACTIVE",
-            currentClassId: defaultClass?.id || null,
-            admissionDate: new Date()
-          }
-        });
-      } else {
-        assignedRegNumber = existingStudent.registrationNumber;
-        await prisma.student.update({ where: { id: existingStudent.id }, data: { status: "ACTIVE" } });
-      }
+      assignedRegNumber = existingStudent?.registrationNumber || assignedRegNumber;
     } else if (target.role === "PARENT") {
       const existingParent = await prisma.parent.findUnique({ where: { userId: id } });
       if (!existingParent) {
@@ -178,7 +221,7 @@ const changeStatus = async (id, status, actor) => {
         const firstName = nameParts[0] || "";
         const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
 
-        const result = await sendApprovalEmail({ to: target.email, name: target.fullName, role: target.role, registrationNumber: assignedRegNumber });
+        const result = await sendApprovalEmail({ to: target.email, name: target.fullName, username: target.email, role: target.role, registrationNumber: assignedRegNumber });
         if (!result?.success) throw new Error("The mailer did not accept the approval email.");
         communication.email = true;
         communication.emailMessageId = result.messageId;

@@ -2,6 +2,7 @@ const NotFoundError = require("../../core/errors/NotFoundError");
 const AppError = require("../../core/errors/AppError");
 const repository = require("./result.repository");
 const { prisma } = require("../../config/database");
+const { hasPermission } = require("../../core/middleware/authorization.middleware");
 
 const calculateGrade = (percentage) => {
 	const pct = Number(percentage);
@@ -12,9 +13,28 @@ const calculateGrade = (percentage) => {
 	return "F";
 };
 
-const getById = async (id) => {
+const getById = async (id, user) => {
 	const result = await repository.findById(id);
 	if (!result) throw new NotFoundError("Result not found");
+	if (user?.role === "STUDENT" && (result.student.userId !== user.userId || !result.published)) {
+		throw new AppError("You can only view your own published results.", 403, "RESULT_ACCESS_DENIED");
+	}
+	if (user?.role === "TEACHER") {
+		const staff = await prisma.staff.findUnique({ where: { userId: user.userId }, select: { id: true } });
+		const assignment = staff ? await prisma.teacherAssignment.findFirst({
+			where: {
+				staffId: staff.id,
+				classId: result.exam.classId,
+				subjectId: result.exam.subjectId,
+				AND: [{ OR: [{ sessionId: null }, { sessionId: result.sessionId }] }, { OR: [{ termId: null }, { termId: result.termId }] }]
+			},
+			select: { id: true }
+		}) : null;
+		if (!assignment) throw new AppError("You are not assigned to this result's class and subject.", 403, "RESULT_ACCESS_DENIED");
+	}
+	if (user && !["STUDENT", "TEACHER"].includes(user.role)) {
+		if (!await hasPermission(user, "results:view")) throw new AppError("You cannot view this result.", 403, "RESULT_ACCESS_DENIED");
+	}
 	return result;
 };
 
@@ -26,13 +46,22 @@ const getMyResults = async (userId) => {
 	return student ? repository.findForStudent(student.id, true) : [];
 };
 
-const getAll = (query) => {
+const getAll = async (query, user) => {
 	const where = {};
 	["studentId", "examId", "sessionId", "termId", "published"].forEach((key) => {
 		if (query[key] !== undefined) {
 			where[key] = key === "published" ? query[key] === "true" : query[key];
 		}
 	});
+	if (user?.role === "STUDENT") {
+		const student = await repository.findStudentByUserId(user.userId);
+		if (!student) return [];
+		where.studentId = student.id;
+		where.published = true;
+		return repository.findAll(where);
+	}
+	if (user?.role === "TEACHER") return repository.findForTeacher(user.userId, where);
+	if (!await hasPermission(user, "results:view")) throw new AppError("You cannot view these results.", 403, "RESULT_ACCESS_DENIED");
 	return repository.findAll(where);
 };
 
@@ -46,7 +75,7 @@ const getForTeacher = (userId, query) => {
 
 const setPublished = async (id, published, actor) => {
 	const existing = await getById(id);
-	if (actor && !["SUPER_ADMIN", "ADMIN"].includes(actor.role)) {
+	if (actor && actor.role !== "SUPER_ADMIN" && !(await hasPermission(actor, "results:edit"))) {
 		throw new AppError("Only administrators can publish/unpublish exam results.", 403, "RESULT_PUBLISH_DENIED");
 	}
 
@@ -68,9 +97,9 @@ const setPublished = async (id, published, actor) => {
 };
 
 const updateResult = async (id, data, actor, reason) => {
-	const existing = await getById(id);
+	const existing = await getById(id, actor);
 
-	if (existing.published && !["SUPER_ADMIN", "ADMIN"].includes(actor.role)) {
+	if (existing.published && actor.role !== "SUPER_ADMIN" && !(await hasPermission(actor, "results:edit"))) {
 		throw new AppError("Published results are locked and can only be edited by administrators.", 403, "RESULT_LOCKED");
 	}
 

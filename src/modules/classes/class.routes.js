@@ -24,6 +24,8 @@ router.post(
     classController.createClass
 );
 
+router.get("/levels", classController.getClassLevels);
+
 // Get all classes
 router.get(
     "/",
@@ -40,6 +42,8 @@ router.get(
     "/:id/students",
     classController.getStudents
 );
+
+router.get("/:id/arms", classController.getClassArms);
 
 // Update class
 router.patch(

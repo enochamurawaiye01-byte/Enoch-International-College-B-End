@@ -39,12 +39,14 @@ const createAdmissionSchema = z.object({
 	profileImageUrl: z.string().trim().max(1000).nullable().optional(),
 
 	desiredClassId: uuid.nullable().optional(),
+	desiredDepartmentId: uuid.nullable().optional(),
 });
 
 const updateAdmissionSchema = z.object({
 	status: admissionStatus.optional(),
 	reviewNotes: z.string().trim().max(2000).nullable().optional(),
 	desiredClassId: uuid.nullable().optional(),
+	desiredDepartmentId: uuid.nullable().optional(),
 	currentClass: z.string().trim().max(100).nullable().optional(),
 	currentTerm: z.string().trim().max(50).nullable().optional(),
 	targetClass: z.string().trim().max(100).nullable().optional(),

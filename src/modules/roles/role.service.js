@@ -4,7 +4,7 @@ const AppError = require("../../core/errors/AppError");
 const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./role.repository");
 const { audit } = require("./role.utils");
-const { sendRoleAssignmentEmail } = require("../../config/mailer");
+const { sendRoleAssignmentEmail, sendRoleActivatedEmail } = require("../../config/mailer");
 const { UserRole } = require("@prisma/client");
 const generateRegistrationNumber = require("../../core/utils/generate-registration-number");
 
@@ -205,6 +205,8 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
           await sendRoleAssignmentEmail({
             to: targetUser.email,
             name: targetUser.fullName,
+            username: targetUser.email,
+            staffId: targetUser.staff?.staffNumber,
             roles: [assignedRole.name],
             activationUrl
           });
@@ -235,7 +237,7 @@ const activateRole = async ({ token, assignmentId }, actorUser) => {
   } else if (assignmentId) {
     assignment = await prisma.userRoleAssignment.findUnique({
       where: { id: assignmentId },
-      include: { role: true, user: { include: { student: { select: { id: true } } } } }
+      include: { role: true, user: { include: { student: { select: { id: true } }, staff: { select: { staffNumber: true } } } } }
     });
   }
 
@@ -354,10 +356,27 @@ const activateRole = async ({ token, assignmentId }, actorUser) => {
 
   await audit(prisma, actorUser.userId, "ROLE_ACTIVATED", "User", assignment.userId, `Activated role ${assignment.role.name}`);
 
+  const activationWarnings = [];
+  if (assignment.user.email) {
+    try {
+      await sendRoleActivatedEmail({
+        to: assignment.user.email,
+        name: assignment.user.fullName,
+        username: assignment.user.email,
+        staffId: assignment.user.staff?.staffNumber,
+        role: assignment.role.name
+      });
+    } catch (error) {
+      activationWarnings.push("The role was activated, but the confirmation email could not be sent.");
+      console.error("[Role Activation Email Error]:", error.message);
+    }
+  }
+
   return {
     success: true,
     message: `Role ${assignment.role.name} activated successfully.`,
-    assignment: activated
+    assignment: activated,
+    warnings: activationWarnings
   };
 };
 
@@ -507,7 +526,14 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
     if (targetUser.email) {
       try {
         const activationUrl = buildRoleActivationUrl(assignment.assignmentId);
-        await sendRoleAssignmentEmail({ to: targetUser.email, name: targetUser.fullName, roles: [assignment.name], activationUrl });
+        await sendRoleAssignmentEmail({
+          to: targetUser.email,
+          name: targetUser.fullName,
+          username: targetUser.email,
+          staffId: targetUser.staff?.staffNumber,
+          roles: [assignment.name],
+          activationUrl
+        });
       } catch (error) {
         followUpErrors.push(`Email delivery: ${error.message}`);
       }

@@ -8,5 +8,10 @@ const createTeacherAssignmentSchema = z.object({
     sessionId: optionalUuid,
     termId: optionalUuid,
 }).strict();
+const classTeacherAssignmentSchema = z.object({
+    staffId: z.string().uuid("A valid teacher ID is required."),
+    classId: z.string().uuid("A valid class ID is required."),
+    sessionId: z.string().uuid("A valid academic session ID is required.")
+}).strict();
 
-module.exports = { createTeacherAssignmentSchema };
+module.exports = { createTeacherAssignmentSchema, classTeacherAssignmentSchema };

@@ -5,6 +5,7 @@ const subjectController = require("./subject.controller");
 
 const validate = require("../../core/middleware/validation.middleware");
 const authenticate = require("../../core/middleware/auth.middleware");
+const { requireRoles } = require("../../core/middleware/authorization.middleware");
 
 const {
     createSubjectSchema,
@@ -19,6 +20,7 @@ router.use(authenticate);
 // Create subject
 router.post(
     "/",
+    requireRoles("SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"),
     validate(createSubjectSchema),
     subjectController.createSubject
 );
@@ -38,6 +40,7 @@ router.get(
 // Update subject
 router.patch(
     "/:id",
+    requireRoles("SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"),
     validate(updateSubjectSchema),
     subjectController.updateSubject
 );
@@ -45,6 +48,7 @@ router.patch(
 // Delete subject
 router.delete(
     "/:id",
+    requireRoles("SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"),
     subjectController.deleteSubject
 );
 

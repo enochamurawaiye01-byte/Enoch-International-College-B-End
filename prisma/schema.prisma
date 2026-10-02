@@ -585,6 +585,10 @@ model User {
   roleAssignments  UserRoleAssignment[]
   permissionGrants UserPermission[]
   prefectAssignmentsMade PrefectAssignment[] @relation("PrefectAssignedBy")
+  classTeacherAssignmentsMade ClassTeacherAssignment[] @relation("ClassTeacherAssignedBy")
+  reportCardEntriesCreated ReportCardEntry[] @relation("ReportCardEntryCreatedBy")
+  reportCardEntriesUpdated ReportCardEntry[] @relation("ReportCardEntryUpdatedBy")
+  assessmentConfigurationsUpdated AssessmentConfiguration[] @relation("AssessmentConfigurationUpdatedBy")
   newsArticles NewsArticle[]
   eventsOrganized Event[]
   sentMessages     Message[]      @relation("MessageSender")
@@ -747,6 +751,7 @@ model School {
   galleryAlbums    GalleryAlbum[]
   websitePages     WebsitePage[]
   websiteSettings  WebsiteSetting[]
+  assessmentConfigurations AssessmentConfiguration[]
 }
 
 // ============================================================
@@ -766,6 +771,27 @@ model SchoolSetting {
   updatedAt DateTime @updatedAt
 
   @@unique([schoolId, key])
+}
+
+model AssessmentConfiguration {
+  id String @id @default(uuid())
+
+  scopeKey String @unique
+  schoolId String?
+  school   School? @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  firstTestMax  Decimal @default(20) @db.Decimal(6, 2)
+  secondTestMax Decimal @default(20) @db.Decimal(6, 2)
+  examMax       Decimal @default(60) @db.Decimal(6, 2)
+  gradeBands    Json    @default("[{\"minimum\":70,\"grade\":\"A\",\"remark\":\"Excellent\"},{\"minimum\":60,\"grade\":\"B\",\"remark\":\"Very Good\"},{\"minimum\":50,\"grade\":\"C\",\"remark\":\"Good\"},{\"minimum\":45,\"grade\":\"D\",\"remark\":\"Pass\"},{\"minimum\":0,\"grade\":\"F\",\"remark\":\"Needs Improvement\"}]")
+
+  updatedById String?
+  updatedBy   User? @relation("AssessmentConfigurationUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
 }
 
 // ============================================================
@@ -798,6 +824,7 @@ model AcademicSession {
   lessons       Lesson[]
   assignments   Assignment[]
   prefectAssignments PrefectAssignment[]
+  classTeacherAssignments ClassTeacherAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -883,6 +910,8 @@ model Class {
   admissionApplications Admission[]
   classSubjects      ClassSubject[]
   teacherAssignments TeacherAssignment[]
+  classTeacherAssignments ClassTeacherAssignment[]
+  reportCards        ReportCard[]
   feeStructures      FeeStructure[]
   timetable          Timetable[]
   exams              Exam[]
@@ -913,6 +942,9 @@ model Department {
 
   subjects Subject[]
   staff    Staff[]
+  enrollments Enrollment[]
+  studentApplicants Student[] @relation("StudentDesiredDepartment")
+  admissionApplicants Admission[] @relation("AdmissionDesiredDepartment")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -985,6 +1017,7 @@ model ClassSubject {
 
   class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
   subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  studentEnrollments StudentSubjectEnrollment[]
 
   createdAt DateTime @default(now())
 
@@ -1003,7 +1036,7 @@ model Student {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  registrationNumber String  @unique
+  registrationNumber String? @unique
   admissionNumber    String? @unique
 
   firstName  String
@@ -1025,6 +1058,9 @@ model Student {
 
   currentClassId String?
   currentClass   Class?  @relation(fields: [currentClassId], references: [id], onDelete: SetNull)
+
+  desiredDepartmentId String?
+  desiredDepartment   Department? @relation("StudentDesiredDepartment", fields: [desiredDepartmentId], references: [id], onDelete: SetNull)
 
   currentSessionId String?
 
@@ -1121,6 +1157,9 @@ model Admission {
 
   desiredClassId String?
   desiredClass   Class? @relation(fields: [desiredClassId], references: [id], onDelete: SetNull)
+
+  desiredDepartmentId String?
+  desiredDepartment   Department? @relation("AdmissionDesiredDepartment", fields: [desiredDepartmentId], references: [id], onDelete: SetNull)
 
   status      AdmissionStatus @default(APPLIED)
   reviewNotes String?
@@ -1224,6 +1263,8 @@ model Staff {
   profileImageUrl String?
 
   teacherAssignments TeacherAssignment[]
+  classTeacherAssignments ClassTeacherAssignment[]
+  reportCardEntries ReportCardEntry[]
   teacherAttendance  TeacherAttendance[]
   timetableSlots     TimetableSlot[]
   leaves             StaffLeave[]
@@ -1249,16 +1290,19 @@ model Enrollment {
   sessionId String
   termId    String
   classId   String
+  departmentId String?
 
   student Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
   session AcademicSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   term    Term            @relation(fields: [termId], references: [id], onDelete: Cascade)
   class   Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
   status EnrollmentStatus @default(ACTIVE)
 
   enrollmentDate DateTime  @default(now())
   completionDate DateTime?
+  subjectRegistrations StudentSubjectEnrollment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1268,6 +1312,23 @@ model Enrollment {
   @@index([sessionId])
   @@index([termId])
   @@index([classId])
+}
+
+model StudentSubjectEnrollment {
+  id String @id @default(uuid())
+
+  enrollmentId  String
+  classSubjectId String
+
+  enrollment  Enrollment  @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  classSubject ClassSubject @relation(fields: [classSubjectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([enrollmentId, classSubjectId])
+  @@index([enrollmentId])
+  @@index([classSubjectId])
 }
 
 // ============================================================
@@ -1299,6 +1360,27 @@ model TeacherAssignment {
   @@index([classId])
 }
 
+model ClassTeacherAssignment {
+  id String @id @default(uuid())
+
+  staffId   String
+  classId   String
+  sessionId String
+  assignedById String?
+
+  staff      Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  class      Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  session    AcademicSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  assignedBy User?          @relation("ClassTeacherAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([classId, sessionId])
+  @@index([staffId])
+  @@index([sessionId])
+}
+
 // ============================================================
 // STUDENT ATTENDANCE
 // ============================================================
@@ -1309,6 +1391,7 @@ model StudentAttendance {
   studentId String
   sessionId String
   termId    String
+  classId   String?
 
   student Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
   session AcademicSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
@@ -1624,10 +1707,12 @@ model ReportCard {
   studentId String
   sessionId String
   termId    String
+  classId   String?
 
   student Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
   session AcademicSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   term    Term            @relation(fields: [termId], references: [id], onDelete: Cascade)
+  class   Class?          @relation(fields: [classId], references: [id], onDelete: SetNull)
 
   totalScore    Decimal? @db.Decimal(10, 2)
   totalPossible Decimal? @db.Decimal(10, 2)
@@ -1655,6 +1740,7 @@ model ReportCard {
   @@index([studentId])
   @@index([sessionId])
   @@index([termId])
+  @@index([classId])
 }
 
 // ============================================================
@@ -1666,9 +1752,15 @@ model ReportCardEntry {
 
   reportCardId String
   subjectId    String
+  teacherId    String?
+  createdById  String?
+  updatedById  String?
 
   reportCard ReportCard @relation(fields: [reportCardId], references: [id], onDelete: Cascade)
   subject    Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher    Staff?     @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  createdBy  User?      @relation("ReportCardEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy  User?      @relation("ReportCardEntryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   firstTest  Decimal? @db.Decimal(6, 2)
   secondTest Decimal? @db.Decimal(6, 2)
@@ -1677,6 +1769,7 @@ model ReportCardEntry {
 
   total    Decimal? @db.Decimal(8, 2)
   grade    String?
+  remark   String?
   position Int?
 
   teacherComment String?
@@ -1685,6 +1778,9 @@ model ReportCardEntry {
   updatedAt DateTime @updatedAt
 
   @@unique([reportCardId, subjectId])
+  @@index([teacherId])
+  @@index([createdById])
+  @@index([updatedById])
   @@index([subjectId])
 }
 
@@ -1829,6 +1925,7 @@ model TransportVehicle {
   registrationNumber String @unique
   name String?
   isActive Boolean @default(true)
+
   capacity Int
   status String @default("ACTIVE")
   driverName String?

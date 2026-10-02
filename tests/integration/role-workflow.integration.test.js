@@ -1,15 +1,19 @@
 require("dotenv").config();
+const allowProductionWrites = process.env.ALLOW_PRODUCTION_INTEGRATION_WRITES === "1";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { prisma } = require("../../src/config/database");
-const roleService = require("../../src/modules/roles/role.service");
-const roleRepository = require("../../src/modules/roles/role.repository");
-const userService = require("../../src/modules/users/user.service");
-const notificationService = require("../../src/modules/notifications/notification.service");
-const { hasPermission } = require("../../src/core/middleware/authorization.middleware");
-const { generateAccessToken } = require("../../src/core/utils/jwt");
+const integrationDependencies = allowProductionWrites ? {
+  prisma: require("../../src/config/database").prisma,
+  roleService: require("../../src/modules/roles/role.service"),
+  roleRepository: require("../../src/modules/roles/role.repository"),
+  userService: require("../../src/modules/users/user.service"),
+  notificationService: require("../../src/modules/notifications/notification.service"),
+  hasPermission: require("../../src/core/middleware/authorization.middleware").hasPermission,
+  generateAccessToken: require("../../src/core/utils/jwt").generateAccessToken,
+} : null;
 
-test("live role lifecycle, permission union, and Super Admin database cap", async (t) => {
+test("live role lifecycle, permission union, and Super Admin database cap", { skip: allowProductionWrites ? false : "This integration test writes temporary production records; inspect and explicitly approve before opting in." }, async (t) => {
+  const { prisma, roleService, roleRepository, userService, notificationService, hasPermission, generateAccessToken } = integrationDependencies;
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const createdUserIds = [];
   const createdSessionTokens = [];

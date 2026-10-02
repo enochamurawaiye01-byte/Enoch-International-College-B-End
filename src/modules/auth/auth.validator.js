@@ -114,7 +114,8 @@ const registerSchema = z
     password: passwordSchema,
     confirmPassword: z.string(),
     role: z.enum(["STUDENT", "TEACHER", "PARENT"]).default("STUDENT"),
-    staffNumber: optionalText(z.string().trim().min(2).max(50)),
+    currentClassId: z.string().uuid().optional(),
+    desiredDepartmentId: z.string().uuid().optional(),
     jobTitle: optionalText(z.string().trim().max(120)),
     qualification: optionalText(z.string().trim().max(300)),
     childRegistrationNumber: optionalText(z.string().trim().min(2).max(50)),
@@ -139,6 +140,10 @@ const registerSchema = z
     schoolId: optionalText(z.string().trim()),
   })
   .refine(
+    (data) => data.role !== "STUDENT" || Boolean(data.currentClassId),
+    { message: "Select a class for the student application", path: ["currentClassId"] }
+  )
+  .refine(
     (data) => data.password === data.confirmPassword,
     {
       message: "Passwords do not match",
@@ -148,13 +153,6 @@ const registerSchema = z
   .refine(
     (data) => data.role !== "PARENT" || Boolean(data.childRegistrationNumber),
     { message: "Child registration number is required for parent registration", path: ["childRegistrationNumber"] }
-  )
-  .refine(
-    (data) => data.role !== "TEACHER" || Boolean(data.staffNumber),
-    {
-      message: "Staff number is required for teacher registration",
-      path: ["staffNumber"],
-    }
   );
 
 /*

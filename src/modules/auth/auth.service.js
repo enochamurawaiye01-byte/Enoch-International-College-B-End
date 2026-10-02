@@ -1,5 +1,6 @@
 
 const { prisma } = require("../../config/database");
+const crypto = require("node:crypto");
 const AUTH = require("./auth.constants");
 const repository = require("./auth.repository");
 const { hashPassword, comparePassword } = require("../../core/utils/hash");
@@ -12,9 +13,20 @@ const {
 const AuthError = require("../../core/errors/AuthError");
 const AppError = require("../../core/errors/AppError");
 const studentService = require("../students/student.service");
-const generateRegistrationNumber = require("../../core/utils/generate-registration-number");
 const jwt = require("jsonwebtoken");
 const { sendPasswordResetEmail } = require("../../config/mailer");
+
+const getPublicRegistrationOptions = async () => {
+    const [classes, departments] = await Promise.all([
+        prisma.class.findMany({
+            where: { isActive: true },
+            select: { id: true, name: true, arm: true, classLevel: { select: { name: true, code: true } } },
+            orderBy: [{ classLevel: { code: "asc" } }, { arm: "asc" }],
+        }),
+        prisma.department.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    ]);
+    return { classes, departments };
+};
 
 const sanitizeUser = (user) => {
     if (!user) return null;
@@ -33,7 +45,8 @@ const register = async (data) => {
         phoneNumber,
         password,
         role = "STUDENT",
-        staffNumber,
+        currentClassId,
+        desiredDepartmentId,
         jobTitle,
         qualification,
         childRegistrationNumber,
@@ -73,6 +86,21 @@ const register = async (data) => {
         .join(" ");
 
     const result = await prisma.$transaction(async (tx) => {
+        let selectedClass = null;
+        if (role === "STUDENT") {
+            selectedClass = await tx.class.findFirst({
+                where: { id: currentClassId, isActive: true },
+                include: { classLevel: true },
+            });
+            if (!selectedClass) throw new AuthError("Select an active class.", 422, "STUDENT_CLASS_REQUIRED");
+            const isSeniorSecondary = selectedClass.classLevel.code.startsWith("SS");
+            if (isSeniorSecondary && !desiredDepartmentId) throw new AuthError("Select a department for senior secondary students.", 422, "STUDENT_DEPARTMENT_REQUIRED");
+            if (desiredDepartmentId && !(await tx.department.findUnique({ where: { id: desiredDepartmentId } }))) {
+                throw new AuthError("The selected department was not found.", 422, "STUDENT_DEPARTMENT_NOT_FOUND");
+            }
+            if (!isSeniorSecondary && desiredDepartmentId) throw new AuthError("Departments can only be selected for senior secondary classes.", 422, "STUDENT_DEPARTMENT_NOT_ALLOWED");
+        }
+
         const user = await tx.user.create({
             data: {
                 fullName,
@@ -84,12 +112,7 @@ const register = async (data) => {
             },
         });
 
-      const registrationNumber =
-    await generateRegistrationNumber(
-        tx,
-        fullName,
-        new Date()
-    );
+        const registrationNumber = null;
 
         const student = role === "STUDENT" ? await tx.student.create({
             data: {
@@ -104,7 +127,9 @@ const register = async (data) => {
                 nationality: nationality || null,
                 stateOfOrigin: stateOfOrigin || null,
                 localGovernment: localGovernment || null,
-                admissionDate: new Date(),
+                currentClassId: selectedClass.id,
+                desiredDepartmentId: desiredDepartmentId || null,
+                admissionDate: null,
                 status: "INACTIVE",
             },
         }) : null;
@@ -122,7 +147,7 @@ const register = async (data) => {
         const staff = role === "TEACHER" ? await tx.staff.create({
             data: {
                 userId: user.id,
-                staffNumber,
+                staffNumber: `MTC/STF/${crypto.randomBytes(16).toString("hex").toUpperCase()}`,
                 firstName,
                 middleName: middleName || null,
                 lastName,
@@ -495,6 +520,7 @@ const verifyToken = (token) => {
 };
 
 module.exports = {
+    getPublicRegistrationOptions,
     register,
     login,
     refreshToken,
