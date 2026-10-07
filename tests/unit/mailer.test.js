@@ -40,19 +40,20 @@ test("mailer rejects a malformed recipient before opening SMTP", async () => {
   );
 });
 
-test("mailer uses Brevo HTTPS API when configured", async () => {
+test("mailer uses SendGrid HTTPS API when configured", async () => {
   const originalFetch = global.fetch;
-  const originalApiKey = process.env.BREVO_API_KEY;
+  const originalApiKey = process.env.SENDGRID_API_KEY;
   const originalFrom = process.env.SMTP_FROM;
   const requests = [];
-  process.env.BREVO_API_KEY = "brevo-test-key";
+  process.env.SENDGRID_API_KEY = "sendgrid-test-key";
   process.env.SMTP_FROM = "Mercy T College <mailer@school.invalid>";
   global.fetch = async (url, options = {}) => {
     requests.push({ url, options });
     return {
       ok: true,
-      status: 201,
-      json: async () => requests.length === 1 ? { messageId: "brevo-message-1" } : { email: "mailer@school.invalid" },
+      status: requests.length === 1 ? 202 : 200,
+      headers: { get: (name) => name === "x-message-id" ? "sendgrid-message-1" : null },
+      json: async () => requests.length === 1 ? {} : { scopes: ["mail.send"] },
     };
   };
 
@@ -64,26 +65,28 @@ test("mailer uses Brevo HTTPS API when configured", async () => {
       html: "<p>Appointment confirmed</p>",
     });
     assert.equal(result.success, true);
-    assert.equal(result.messageId, "brevo-message-1");
+    assert.equal(result.messageId, "sendgrid-message-1");
     assert.equal(result.acceptedCount, 1);
-    assert.equal(requests[0].url, "https://api.brevo.com/v3/smtp/email");
-    assert.equal(requests[0].options.headers["api-key"], "brevo-test-key");
+    assert.equal(requests[0].url, "https://api.sendgrid.com/v3/mail/send");
+    assert.equal(requests[0].options.headers.authorization, "Bearer sendgrid-test-key");
     assert.deepEqual(JSON.parse(requests[0].options.body), {
-      sender: { name: "Mercy T College", email: "mailer@school.invalid" },
-      to: [{ email: "teacher@school.invalid" }],
+      personalizations: [{ to: [{ email: "teacher@school.invalid" }] }],
+      from: { name: "Mercy T College", email: "mailer@school.invalid" },
       subject: "Employment appointment letter",
-      textContent: "Appointment confirmed",
-      htmlContent: "<p>Appointment confirmed</p>",
+      content: [
+        { type: "text/plain", value: "Appointment confirmed" },
+        { type: "text/html", value: "<p>Appointment confirmed</p>" },
+      ],
     });
 
     const verification = await mailer.verifyTransporter();
     assert.equal(verification.verified, true);
-    assert.equal(requests[1].url, "https://api.brevo.com/v3/account");
-    assert.equal(requests[1].options.headers["api-key"], "brevo-test-key");
+    assert.equal(requests[1].url, "https://api.sendgrid.com/v3/scopes");
+    assert.equal(requests[1].options.headers.authorization, "Bearer sendgrid-test-key");
   } finally {
     global.fetch = originalFetch;
-    if (originalApiKey === undefined) delete process.env.BREVO_API_KEY;
-    else process.env.BREVO_API_KEY = originalApiKey;
+    if (originalApiKey === undefined) delete process.env.SENDGRID_API_KEY;
+    else process.env.SENDGRID_API_KEY = originalApiKey;
     if (originalFrom === undefined) delete process.env.SMTP_FROM;
     else process.env.SMTP_FROM = originalFrom;
   }
