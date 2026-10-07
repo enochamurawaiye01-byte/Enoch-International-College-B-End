@@ -129,43 +129,52 @@ const getTransporter = () => {
   return transporter;
 };
 
-const sendViaSendGrid = async ({ to, subject, html, text, from }) => {
+const sendViaMailgun = async ({ to, subject, html, text, from }) => {
   const senderEmail = from.match(/<([^<>]+)>/)?.[1] || from;
   const senderName = from.match(/^([^<>]+)</)?.[1].trim().replace(/^["']|["']$/g, "") || "Mercy T College";
   if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(senderEmail)) {
-    throw new Error("SMTP_FROM must be a valid verified sender email when using SENDGRID_API_KEY.");
+    throw new Error("SMTP_FROM must be a valid verified sender email when using MAILGUN_API_KEY.");
   }
 
-  const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+  const domain = (process.env.MAILGUN_DOMAIN || "").trim().toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(domain)) {
+    throw new Error("Set MAILGUN_DOMAIN to your verified Mailgun sending domain.");
+  }
+  if (!senderEmail.toLowerCase().endsWith(`@${domain}`)) {
+    throw new Error(`SMTP_FROM must use an address on the verified Mailgun domain ${domain}.`);
+  }
+  const region = (process.env.MAILGUN_REGION || "us").trim().toLowerCase();
+  if (!["us", "eu"].includes(region)) {
+    throw new Error("MAILGUN_REGION must be set to us or eu.");
+  }
+  const apiHost = region === "eu" ? "api.eu.mailgun.net" : "api.mailgun.net";
+  const form = new FormData();
+  form.append("from", `${senderName} <${senderEmail}>`);
+  form.append("to", to);
+  form.append("subject", subject);
+  if (text) form.append("text", text);
+  if (html) form.append("html", html);
+
+  const response = await fetch(`https://${apiHost}/v3/${domain}/messages`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${process.env.SENDGRID_API_KEY}`,
-      "content-type": "application/json",
+      authorization: `Basic ${Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString("base64")}`,
       accept: "application/json",
     },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email: to }] }],
-      from: { name: senderName, email: senderEmail },
-      subject,
-      content: [
-        ...(text ? [{ type: "text/plain", value: text }] : []),
-        ...(html ? [{ type: "text/html", value: html }] : []),
-      ],
-    }),
+    body: form,
     signal: AbortSignal.timeout(15000),
   });
   const result = await response.json().catch(() => ({}));
-  if (response.status !== 202) {
-    const error = new Error(result.errors?.map(({ message }) => message).join("; ") || `SendGrid rejected email delivery (HTTP ${response.status}).`);
-    error.code = result.errors?.[0]?.field || `SENDGRID_HTTP_${response.status}`;
+  if (!response.ok || !result.id) {
+    const error = new Error(result.message || `Mailgun rejected email delivery (HTTP ${response.status}).`);
+    error.code = result.code || `MAILGUN_HTTP_${response.status}`;
     throw error;
   }
-  const messageId = response.headers.get("x-message-id") || undefined;
-  console.log(`[SENDGRID SUCCESS] Message accepted | Subject: "${subject}" | MessageID: ${messageId || "not provided"}`);
+  console.log(`[MAILGUN SUCCESS] Message accepted | Subject: "${subject}" | MessageID: ${result.id}`);
   return {
     success: true,
-    messageId,
-    response: "Accepted by SendGrid transactional email API",
+    messageId: result.id,
+    response: result.message || "Accepted by Mailgun transactional email API",
     acceptedCount: 1,
     rejectedCount: 0,
   };
@@ -179,20 +188,20 @@ const sendEmail = async ({ to, subject, html, text }) => {
     throw new Error("A valid email recipient is required.");
   }
 
-  const activeTransporter = getTransporter();
   const from = process.env.SMTP_MAIL || process.env.SMTP_FROM || process.env.SMTP_USER || "mercytcollege@gmail.com";
 
-  if (process.env.SENDGRID_API_KEY?.trim()) {
+  if (process.env.MAILGUN_API_KEY?.trim()) {
     try {
-      return await sendViaSendGrid({ to: to.trim(), subject, html, text, from });
+      return await sendViaMailgun({ to: to.trim(), subject, html, text, from });
     } catch (error) {
-      console.error(`[SENDGRID FAILED] Message rejected | Subject: "${subject}" | Code: ${error.code || "UNKNOWN"} | Error: ${error.message}`);
+      console.error(`[MAILGUN FAILED] Message rejected | Subject: "${subject}" | Code: ${error.code || "UNKNOWN"} | Error: ${error.message}`);
       throw error;
     }
   }
 
+  const activeTransporter = getTransporter();
   if (!activeTransporter) {
-    throw new Error("Email delivery is not configured. Set SENDGRID_API_KEY and a verified SMTP_FROM sender for Render, or configure SMTP_USER and SMTP_PASSWORD on a host that permits SMTP.");
+    throw new Error("Email delivery is not configured. Set MAILGUN_API_KEY, MAILGUN_DOMAIN, and a verified SMTP_FROM sender for Render, or configure SMTP_USER and SMTP_PASSWORD on a host that permits SMTP.");
   }
 
   try {
@@ -417,30 +426,38 @@ const sendRoleActivatedEmail = async ({ to, name, username, staffId, role }) => 
  * Transporter Connection Verifier
  */
 const verifyTransporter = async () => {
-  if (process.env.SENDGRID_API_KEY?.trim()) {
+  if (process.env.MAILGUN_API_KEY?.trim()) {
     try {
-      const response = await fetch("https://api.sendgrid.com/v3/scopes", {
-        headers: { authorization: `Bearer ${process.env.SENDGRID_API_KEY}`, accept: "application/json" },
+      const domain = (process.env.MAILGUN_DOMAIN || "").trim().toLowerCase();
+      if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(domain)) {
+        throw new Error("Set MAILGUN_DOMAIN to your verified Mailgun sending domain.");
+      }
+      const region = (process.env.MAILGUN_REGION || "us").trim().toLowerCase();
+      if (!["us", "eu"].includes(region)) {
+        throw new Error("MAILGUN_REGION must be set to us or eu.");
+      }
+      const apiHost = region === "eu" ? "api.eu.mailgun.net" : "api.mailgun.net";
+      const response = await fetch(`https://${apiHost}/v3/domains/${domain}`, {
+        headers: {
+          authorization: `Basic ${Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString("base64")}`,
+          accept: "application/json",
+        },
         signal: AbortSignal.timeout(10000),
       });
       if (!response.ok) {
         const result = await response.json().catch(() => ({}));
-        throw new Error(result.errors?.map(({ message }) => message).join("; ") || `SendGrid rejected API verification (HTTP ${response.status}).`);
+        throw new Error(result.message || `Mailgun rejected API verification (HTTP ${response.status}).`);
       }
-      const { scopes = [] } = await response.json();
-      if (!scopes.includes("mail.send")) {
-        throw new Error("SendGrid API key is missing the Mail Send permission.");
-      }
-      console.log("[SENDGRID VERIFY SUCCESS] Transactional email API credentials verified.");
-      return { verified: true, message: "SendGrid transactional email API credentials verified successfully." };
+      console.log("[MAILGUN VERIFY SUCCESS] Transactional email API credentials verified.");
+      return { verified: true, message: "Mailgun transactional email API credentials verified successfully." };
     } catch (error) {
-      console.error(`[SENDGRID VERIFY FAILED] ${error.message}`);
+      console.error(`[MAILGUN VERIFY FAILED] ${error.message}`);
       return { verified: false, reason: "VERIFICATION_FAILED", message: error.message };
     }
   }
   const activeTransporter = getTransporter();
   if (!activeTransporter) {
-    return { verified: false, reason: "NO_EMAIL_CREDENTIALS", message: "Set SENDGRID_API_KEY and a verified SMTP_FROM sender, or configure SMTP_USER and SMTP_PASSWORD on a host that permits SMTP." };
+    return { verified: false, reason: "NO_EMAIL_CREDENTIALS", message: "Set MAILGUN_API_KEY, MAILGUN_DOMAIN, and a verified SMTP_FROM sender, or configure SMTP_USER and SMTP_PASSWORD on a host that permits SMTP." };
   }
   try {
     await activeTransporter.verify();
