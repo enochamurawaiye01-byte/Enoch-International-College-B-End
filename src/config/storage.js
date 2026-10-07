@@ -45,8 +45,9 @@ const uploadFile = async ({ file, folder, privateFile = false }) => {
 	const objectPath = `${folder}/${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`;
 	const { error } = await client.storage.from(bucket).upload(objectPath, file.buffer, { contentType: file.mimetype, upsert: false });
 	if (error) throw new Error(`Supabase Storage upload failed: ${error.message}`);
-	if (!privateFile) return { bucket, path: objectPath, url: client.storage.from(bucket).getPublicUrl(objectPath).data.publicUrl };
-	return { bucket, path: objectPath, storageReference: createStorageReference(bucket, objectPath) };
+	const storageReference = createStorageReference(bucket, objectPath);
+	if (!privateFile) return { bucket, path: objectPath, storageReference, url: client.storage.from(bucket).getPublicUrl(objectPath).data.publicUrl };
+	return { bucket, path: objectPath, storageReference };
 };
 
 const getFileUrl = async (value) => {

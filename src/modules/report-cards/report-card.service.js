@@ -308,8 +308,76 @@ const update = async (id, data, user) => {
 
 const publish = async (id, published, user) => {
 	if (!(await canManageResults(user))) throw new AppError("Only authorized administrators can publish report cards.", 403, "REPORT_CARD_PUBLISH_DENIED");
-	await repository.findById(id) || (() => { throw new NotFoundError("Report card not found"); })();
-	return repository.update(id, { published });
+	return prisma.$transaction(async (tx) => {
+		const report = await tx.reportCard.findUnique({ where: { id }, include: { entries: true } });
+		if (!report) throw new NotFoundError("Report card not found");
+		if (published) await assertReportComplete(tx, report);
+		const updated = await tx.reportCard.update({ where: { id }, data: { published } });
+		await tx.auditLog.create({ data: {
+			userId: user.userId,
+			action: published ? "PUBLISH_REPORT_CARD" : "UNPUBLISH_REPORT_CARD",
+			entity: "ReportCard",
+			entityId: id,
+			description: `${published ? "Published" : "Unpublished"} report card for student ${report.studentId}, session ${report.sessionId}, term ${report.termId}`,
+		} });
+		return updated;
+	}, { isolationLevel: "Serializable" });
+};
+
+const assertReportComplete = async (tx, report) => {
+	const enrollment = await tx.enrollment.findUnique({
+		where: { studentId_sessionId_termId: { studentId: report.studentId, sessionId: report.sessionId, termId: report.termId } },
+		include: { class: { include: { classLevel: true } }, subjectRegistrations: { include: { classSubject: true } } },
+	});
+	if (!enrollment || enrollment.status !== "ACTIVE") throw new AppError("An active enrollment is required before publishing this result.", 409, "STUDENT_ENROLLMENT_REQUIRED");
+	const classSubjects = await tx.classSubject.findMany({ where: { classId: enrollment.classId, subject: { isActive: true } }, include: { subject: true } });
+	const expectedSubjectIds = enrollment.subjectRegistrations.length
+		? enrollment.subjectRegistrations.map((registration) => registration.classSubjectId)
+		: classSubjects.filter(({ subject }) => !enrollment.class.classLevel.code.startsWith("SS") || !subject.departmentId || subject.departmentId === enrollment.departmentId).map(({ id }) => id);
+	const completedIds = new Set(report.entries.map((entry) => classSubjects.find((classSubject) => classSubject.subjectId === entry.subjectId)?.id).filter(Boolean));
+	const missingCount = expectedSubjectIds.filter((id) => !completedIds.has(id)).length;
+	if (!expectedSubjectIds.length || missingCount) throw new AppError("Every registered subject must have a result before publishing.", 409, "REPORT_CARD_INCOMPLETE", { missingSubjects: missingCount });
+};
+
+const publishClassTerm = async (data, user) => {
+	if (!(await canManageResults(user))) throw new AppError("Only authorized administrators can publish report cards.", 403, "REPORT_CARD_PUBLISH_DENIED");
+	return prisma.$transaction(async (tx) => {
+		const [schoolClass, session, term] = await Promise.all([
+			tx.class.findUnique({ where: { id: data.classId } }),
+			tx.academicSession.findUnique({ where: { id: data.sessionId } }),
+			tx.term.findUnique({ where: { id: data.termId } }),
+		]);
+		if (!schoolClass || !schoolClass.isActive) throw new NotFoundError("Active class not found");
+		if (!session) throw new NotFoundError("Academic session not found");
+		if (!term || term.sessionId !== session.id) throw new AppError("Term does not belong to the selected session.", 409, "TERM_SESSION_MISMATCH");
+		const enrollments = await tx.enrollment.findMany({ where: { classId: schoolClass.id, sessionId: session.id, termId: term.id, status: "ACTIVE" }, select: { studentId: true } });
+		if (!enrollments.length) throw new AppError("There are no active students enrolled in this class and term.", 409, "NO_ACTIVE_ENROLLMENTS");
+		const studentIds = enrollments.map(({ studentId }) => studentId);
+		const reports = await tx.reportCard.findMany({
+			where: { classId: schoolClass.id, studentId: { in: studentIds }, sessionId: session.id, termId: term.id },
+			include: { entries: true },
+		});
+		const reportByStudent = new Map(reports.map((report) => [report.studentId, report]));
+		if (data.published) {
+			for (const studentId of studentIds) {
+				const report = reportByStudent.get(studentId);
+				if (!report) throw new AppError("Every enrolled student must have a report card before class results can be published.", 409, "CLASS_RESULTS_INCOMPLETE");
+				await assertReportComplete(tx, report);
+			}
+		}
+		const result = await tx.reportCard.updateMany({
+			where: { classId: schoolClass.id, studentId: { in: studentIds }, sessionId: session.id, termId: term.id },
+			data: { published: data.published },
+		});
+		await tx.auditLog.create({ data: {
+			userId: user.userId,
+			action: data.published ? "PUBLISH_CLASS_TERM_RESULTS" : "UNPUBLISH_CLASS_TERM_RESULTS",
+			entity: "ReportCard",
+			entityId: reports[0]?.id || null,
+			description: `${data.published ? "Published" : "Unpublished"} ${result.count} report cards for ${schoolClass.name}, ${session.name}, ${term.name}`,
+		} });
+		return { count: result.count, published: data.published };
+	}, { isolationLevel: "Serializable" });
 };
 
 const getAll = async (query, user) => {
@@ -359,4 +427,4 @@ const getAll = async (query, user) => {
 	)) })).filter((report) => report.entries.length);
 };
 
-module.exports = { create, update, getById, publish, getAll, getConfiguration, updateConfiguration, getEntrySheet, saveEntries, canManageResults };
+module.exports = { create, update, getById, publish, publishClassTerm, getAll, getConfiguration, updateConfiguration, getEntrySheet, saveEntries, canManageResults };

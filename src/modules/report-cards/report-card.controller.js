@@ -4,8 +4,9 @@ const update = async (req, res, next) => { try { return res.json({ success: true
 const getAll = async (req, res, next) => { try { return res.json({ success: true, data: await service.getAll(req.query, req.user) }); } catch (error) { next(error); } };
 const getById = async (req, res, next) => { try { return res.json({ success: true, data: await service.getById(req.params.id, req.user) }); } catch (error) { next(error); } };
 const publish = async (req, res, next) => { try { return res.json({ success: true, data: await service.publish(req.params.id, req.body.published, req.user) }); } catch (error) { next(error); } };
+const publishClassTerm = async (req, res, next) => { try { return res.json({ success: true, data: await service.publishClassTerm(req.body, req.user) }); } catch (error) { next(error); } };
 const getConfiguration = async (req, res, next) => { try { return res.json({ success: true, data: await service.getConfiguration(req.user) }); } catch (error) { next(error); } };
 const updateConfiguration = async (req, res, next) => { try { return res.json({ success: true, data: await service.updateConfiguration(req.body, req.user) }); } catch (error) { next(error); } };
 const getEntrySheet = async (req, res, next) => { try { return res.json({ success: true, data: await service.getEntrySheet(req.query, req.user) }); } catch (error) { next(error); } };
 const saveEntries = async (req, res, next) => { try { return res.json({ success: true, data: await service.saveEntries(req.body, req.user) }); } catch (error) { next(error); } };
-module.exports = { create, update, getAll, getById, publish, getConfiguration, updateConfiguration, getEntrySheet, saveEntries };
+module.exports = { create, update, getAll, getById, publish, publishClassTerm, getConfiguration, updateConfiguration, getEntrySheet, saveEntries };

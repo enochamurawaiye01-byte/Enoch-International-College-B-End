@@ -1,6 +1,7 @@
 const AppError = require("../../core/errors/AppError");
 const repository = require("./teacher-assignment.repository");
 const { hasPermission } = require("../../core/middleware/authorization.middleware");
+const { getFileUrl } = require("../../config/storage");
 const { TEACHER_ASSIGNMENT_ERRORS: ERRORS } = require("./teacher-assignment.constants");
 
 const create = async (data) => {
@@ -36,7 +37,11 @@ const getAll = async (query, user) => {
         if (!staff) return [];
         filters.staffId = staff.id;
     }
-    return repository.findAll(filters);
+    const assignments = await repository.findAll(filters);
+    return Promise.all(assignments.map(async (assignment) => ({
+        ...assignment,
+        staff: assignment.staff ? { ...assignment.staff, profileImageUrl: await getFileUrl(assignment.staff.profileImageUrl) } : assignment.staff,
+    })));
 };
 
 const getById = async (id, user) => {
@@ -64,7 +69,11 @@ const getClassTeachers = async (query, user) => {
     } else if (!await hasPermission(user, "teacher_assignments:view")) {
         throw new AppError("You cannot view class teacher assignments.", 403, "TEACHER_ASSIGNMENT_ACCESS_DENIED");
     }
-    return repository.findClassTeacherAssignments(filters);
+    const assignments = await repository.findClassTeacherAssignments(filters);
+    return Promise.all(assignments.map(async (assignment) => ({
+        ...assignment,
+        staff: assignment.staff ? { ...assignment.staff, profileImageUrl: await getFileUrl(assignment.staff.profileImageUrl) } : assignment.staff,
+    })));
 };
 const assignClassTeacher = async (data, user) => {
     const [staff, schoolClass, session] = await Promise.all([

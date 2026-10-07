@@ -3,6 +3,7 @@ const AppError = require("../../core/errors/AppError");
 const classRepository = require("./class.repository");
 const { CLASS_ERRORS } = require("./class.constants");
 const { hasPermission } = require("../../core/middleware/authorization.middleware");
+const { getFileUrl } = require("../../config/storage");
 
 // Create a class/arm
 const createClass = async (data) => {
@@ -169,7 +170,7 @@ const getStudents = async (id, user) => {
 	if (["STUDENT", "PARENT"].includes(user?.role)) throw new AppError("You cannot view a class roster.", 403, "CLASS_ROSTER_ACCESS_DENIED");
     if (!(await hasPermission(user, "classes:view"))) throw new AppError("You cannot view this class roster.", 403, "CLASS_ROSTER_ACCESS_DENIED");
     await getClassById(id, user);
-    return classRepository.findStudents(id);
+    return Promise.all((await classRepository.findStudents(id)).map(async (student) => ({ ...student, profileImageUrl: await getFileUrl(student.profileImageUrl) })));
 };
 
 const deleteClass = async (id) => {

@@ -3,6 +3,7 @@ const { hashPassword } = require("../../core/utils/hash");
 const AppError = require("../../core/errors/AppError");
 const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./parent.repository");
+const { getFileUrl } = require("../../config/storage");
 const getById = async (id) => { const parent = await repository.findById(id); if (!parent) throw new NotFoundError("Parent not found"); return parent; };
 const create = async (data, schoolId) => {
 	if (data.email && await repository.findUserByEmail(data.email.toLowerCase())) throw new AppError("Email is already in use.", 409, "EMAIL_ALREADY_EXISTS");
@@ -30,11 +31,26 @@ const registerParent = async (data, schoolId) => {
 const getChildrenForUser = async (userId) => {
 	const parent = await repository.findByUserId(userId);
 	if (!parent) throw new NotFoundError("Parent profile not found");
-	return parent.parentLinks.map((link) => link.student);
+	return Promise.all(parent.parentLinks.map(async (link) => ({ ...link.student, profileImageUrl: await getFileUrl(link.student.profileImageUrl) })));
 };
 const getChildForUser = async (userId, studentId) => {
 	const link = await repository.findChildForParent(userId, studentId);
 	if (!link) throw new NotFoundError("Child not found for this parent");
-	return link.student;
+	return { ...link.student, profileImageUrl: await getFileUrl(link.student.profileImageUrl) };
 };
-module.exports = { create, getById, getAll: repository.findAll, linkStudent, unlinkStudent, registerParent, getChildrenForUser, getChildForUser };
+const getPublishedChildResults = async (userId, studentId, query = {}) => {
+	const link = await repository.findChildForParent(userId, studentId);
+	if (!link) throw new NotFoundError("Child not found for this parent");
+	const reports = await prisma.reportCard.findMany({
+		where: {
+			studentId,
+			published: true,
+			...(query.sessionId ? { sessionId: query.sessionId } : {}),
+			...(query.termId ? { termId: query.termId } : {}),
+		},
+		include: { student: { include: { user: true, currentClass: { include: { classLevel: true } } } }, class: true, session: true, term: true, entries: { include: { subject: true } } },
+		orderBy: { updatedAt: "desc" },
+	});
+	return Promise.all(reports.map(async (report) => ({ ...report, student: { ...report.student, profileImageUrl: await getFileUrl(report.student.profileImageUrl) } })));
+};
+module.exports = { create, getById, getAll: repository.findAll, linkStudent, unlinkStudent, registerParent, getChildrenForUser, getChildForUser, getPublishedChildResults };

@@ -31,7 +31,9 @@ const findByUserId = async (userId) =>
             user: {
                 select: userSelect,
             },
-            currentClass: true,
+            currentClass: { include: { classLevel: true } },
+            desiredDepartment: true,
+            enrollments: { where: { status: "ACTIVE" }, include: { session: true, term: true, department: true, class: { include: { classLevel: true } } }, orderBy: { createdAt: "desc" } },
         },
     });
 

@@ -6,4 +6,6 @@ const getCurrent = async (req, res, next) => { try { return res.json({ success: 
 const update = async (req, res, next) => { try { return res.json({ success: true, data: await service.update(req.params.id, req.body) }); } catch (error) { next(error); } };
 const changeStatus = async (req, res, next) => { try { return res.json({ success: true, data: await service.changeStatus(req.params.id, req.body.status) }); } catch (error) { next(error); } };
 const getAssignments = async (req, res, next) => { try { return res.json({ success: true, data: await service.getAssignments(req.user.userId, req.query) }); } catch (error) { next(error); } };
-module.exports = { create, getAll, getById, getCurrent, update, changeStatus, getAssignments };
+const updateProfileImage = async (req, res, next) => { try { return res.json({ success: true, data: await service.updateProfileImage(req.user.userId, req.file) }); } catch (error) { next(error); } };
+const removeProfileImage = async (req, res, next) => { try { return res.json({ success: true, data: await service.removeProfileImage(req.user.userId) }); } catch (error) { next(error); } };
+module.exports = { create, getAll, getById, getCurrent, update, changeStatus, getAssignments, updateProfileImage, removeProfileImage };

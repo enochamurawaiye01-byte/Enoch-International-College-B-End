@@ -4,7 +4,7 @@ const { prisma } = require("../../config/database");
 const { hashPassword } = require("../../core/utils/hash");
 const generateRegistrationNumber = require("../../core/utils/generate-registration-number");
 const AppError = require("../../core/errors/AppError");
-const { uploadFile } = require("../../config/storage");
+const { uploadFile, getFileUrl, removeStoredFile } = require("../../config/storage");
 const crypto = require("node:crypto");
 
 const getStudentByUserId = async (userId) => {
@@ -16,7 +16,7 @@ const getStudentByUserId = async (userId) => {
         );
     }
 
-    return student;
+    return { ...student, profileImageUrl: await getFileUrl(student.profileImageUrl) };
 };
 
 const getStudentByRegistrationNumber = async (registrationNumber, actor) => {
@@ -39,7 +39,7 @@ const getStudentByRegistrationNumber = async (registrationNumber, actor) => {
         throw new AppError("You can only access your own student profile.", 403, "STUDENT_ACCESS_DENIED");
     }
 
-    return student;
+    return { ...student, profileImageUrl: await getFileUrl(student.profileImageUrl) };
 };
 
 const createStudent = async (data, schoolId) => {
@@ -113,7 +113,8 @@ const getAllStudents = async (query, user) => {
         filters.classIds = query?.classId ? classIds.filter((id) => id === query.classId) : classIds;
         delete filters.classId;
     }
-    return repository.findAll(filters);
+    const students = await repository.findAll(filters);
+    return Promise.all(students.map(async (student) => ({ ...student, profileImageUrl: await getFileUrl(student.profileImageUrl) })));
 };
 const getStudentById = async (id, user) => {
     const student = await repository.findById(id);
@@ -122,7 +123,7 @@ const getStudentById = async (id, user) => {
     if (user?.role === "TEACHER" && (!student.currentClassId || !(await repository.isTeacherAssignedToClass(user.userId, student.currentClassId)))) {
         throw new AppError("You are not assigned to this student's class.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
     }
-    return student;
+    return { ...student, profileImageUrl: await getFileUrl(student.profileImageUrl) };
 };
 const updateStudent = async (id, data) => {
     const student = await getStudentById(id);
@@ -161,8 +162,18 @@ const updateProfileImage = async (userId, file) => {
     const student = await repository.findByUserId(userId);
     if (!student) throw new NotFoundError("Student profile not found");
     if (!file) throw new AppError("A profile image is required.", 422, "PROFILE_IMAGE_REQUIRED");
-    const stored = await uploadFile({ file, folder: `students/${student.id}` });
-    return repository.updateProfileImage(student.id, stored.url);
+    const stored = await uploadFile({ file, folder: `students/${student.id}`, privateFile: true });
+    const updated = await repository.updateProfileImage(student.id, stored.storageReference);
+    await removeStoredFile(student.profileImageUrl).catch((error) => console.warn("[Student profile image cleanup]", error.message));
+    return { ...updated, profileImageUrl: await getFileUrl(updated.profileImageUrl) };
+};
+
+const removeProfileImage = async (userId) => {
+    const student = await repository.findByUserId(userId);
+    if (!student) throw new NotFoundError("Student profile not found");
+    const updated = await repository.updateProfileImage(student.id, null);
+    await removeStoredFile(student.profileImageUrl);
+    return updated;
 };
 
 module.exports = {
@@ -173,4 +184,5 @@ module.exports = {
     getStudentById,
     updateStudent,
     updateProfileImage,
+    removeProfileImage,
 };

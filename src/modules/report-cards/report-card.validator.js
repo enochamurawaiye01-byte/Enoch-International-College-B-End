@@ -5,6 +5,7 @@ const entry = z.object({ subjectId: uuid, firstTest: score, secondTest: score, a
 const createReportCardSchema = z.object({ studentId: uuid, sessionId: uuid, termId: uuid, teacherComment: z.string().trim().max(1000).nullable().optional(), principalComment: z.string().trim().max(1000).nullable().optional(), entries: z.array(entry).min(1) }).strict();
 const updateReportCardSchema = createReportCardSchema.omit({ studentId: true, sessionId: true, termId: true }).partial().strict().refine((data) => Object.keys(data).length > 0, "At least one field is required.");
 const publicationSchema = z.object({ published: z.boolean() }).strict();
+const classPublicationSchema = z.object({ classId: uuid, sessionId: uuid, termId: uuid, published: z.boolean() }).strict();
 const assessmentConfigurationSchema = z.object({
 	firstTestMax: z.coerce.number().positive().max(1000),
 	secondTestMax: z.coerce.number().positive().max(1000),
@@ -30,4 +31,4 @@ const batchResultSchema = z.object({
 	reason: z.string().trim().min(3).max(1000).optional(),
 	entries: z.array(resultEntrySchema).min(1).max(500)
 }).strict();
-module.exports = { createReportCardSchema, updateReportCardSchema, publicationSchema, assessmentConfigurationSchema, batchResultSchema };
+module.exports = { createReportCardSchema, updateReportCardSchema, publicationSchema, classPublicationSchema, assessmentConfigurationSchema, batchResultSchema };

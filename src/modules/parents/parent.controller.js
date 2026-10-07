@@ -6,4 +6,5 @@ const linkStudent = async (req, res, next) => { try { return res.status(201).jso
 const unlinkStudent = async (req, res, next) => { try { await service.unlinkStudent(req.params.id, req.params.studentId); return res.json({ success: true, message: "Student unlinked successfully." }); } catch (error) { next(error); } };
 const getMyChildren = async (req, res, next) => { try { return res.json({ success: true, data: await service.getChildrenForUser(req.user.userId) }); } catch (error) { next(error); } };
 const getMyChild = async (req, res, next) => { try { return res.json({ success: true, data: await service.getChildForUser(req.user.userId, req.params.studentId) }); } catch (error) { next(error); } };
-module.exports = { create, getAll, getById, linkStudent, unlinkStudent, getMyChildren, getMyChild };
+const getMyChildResults = async (req, res, next) => { try { return res.json({ success: true, data: await service.getPublishedChildResults(req.user.userId, req.params.studentId, req.query) }); } catch (error) { next(error); } };
+module.exports = { create, getAll, getById, linkStudent, unlinkStudent, getMyChildren, getMyChild, getMyChildResults };
