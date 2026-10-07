@@ -15,7 +15,7 @@ const runMaintenanceJobs = async () => {
 };
 
 const startJobRunner = () => {
-    if (process.env.ENABLE_JOBS !== "true") return null;
+    if (process.env.ENABLE_JOBS === "false") return null;
     const interval = setInterval(() => {
         runMaintenanceJobs().catch((error) => console.error("Maintenance jobs failed:", error));
     }, Number(process.env.JOBS_INTERVAL_MS) || 15 * 60 * 1000);
