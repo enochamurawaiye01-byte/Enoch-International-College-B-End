@@ -37,19 +37,17 @@ const changeUserRole = async (req, res, next) => {
 
 const testEmail = async (req, res, next) => {
   try {
-    const verification = await mailer.verifyTransporter();
-    if (!verification.verified) {
-      return res.status(400).json({ success: false, verification });
-    }
     const recipient = process.env.MAILER_TEST_RECIPIENT || req.user.email;
     if (!recipient) return res.status(400).json({ success: false, message: "Configure a test recipient or provide an account email." });
-    const sendResult = await mailer.sendEmail({
+    const sendResult = await mailer.sendApprovalEmail({
       to: recipient,
-      subject: "TEST EMAIL — Mercy T College Diagnostic",
-      text: "End-to-End SMTP Diagnostic Email Test",
-      html: "<div style='font-family:sans-serif; padding:16px; border:1px solid #D8D2C6; background:#FAF7F2;'><h2 style='color:#0A192F;'>Mercy T College SMTP Test</h2><p>SMTP mailer pipeline is verified and active.</p></div>"
+      name: "Klaviyo Diagnostic",
+      username: recipient,
+      role: "STUDENT",
+      registrationNumber: "TEST",
+      classOrProgramme: "Diagnostic test",
     });
-    return res.json({ success: true, verification, sendResult });
+    return res.json({ success: true, provider: "Klaviyo", sendResult });
   } catch (error) {
     next(error);
   }

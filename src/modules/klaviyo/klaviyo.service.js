@@ -102,20 +102,49 @@ const subscribeProfileToList = async ({ email, firstName, lastName, phoneNumber 
 /**
  * Sends a custom event metric ("Application Approved") to Klaviyo to trigger Flows.
  */
-const trackApprovalEvent = async ({ email, firstName, lastName, role, registrationNumber }) => {
+const trackApprovalEvent = async ({
+  email,
+  name,
+  firstName,
+  lastName,
+  username,
+  role,
+  registrationNumber,
+  classOrProgramme,
+  academicSession,
+  department,
+  applicationNumber,
+}) => {
   const { apiKey } = getCredentials();
-  if (!apiKey || !email) return;
+  if (!apiKey) {
+    const error = new Error("Klaviyo is not configured. Set KLAVIYO_PRIVATE_API_KEY with the events:write permission.");
+    error.code = "KLAVIYO_NOT_CONFIGURED";
+    throw error;
+  }
+  if (typeof email !== "string" || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email.trim())) {
+    const error = new Error("A valid email recipient is required for the Klaviyo approval event.");
+    error.code = "INVALID_EMAIL";
+    throw error;
+  }
 
   const normalizedEmail = email.toLowerCase().trim();
+  const nameParts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  const profileFirstName = firstName || nameParts.shift();
+  const profileLastName = lastName || nameParts.join(" ");
   const payload = {
     data: {
       type: "event",
       attributes: {
         properties: {
           registration_number: registrationNumber || "",
-          role: role || "STUDENT",
-          letter_type: role === "TEACHER" ? "Teacher Employment Letter" : "Student Admission Letter",
-          school_name: "Enoch International College",
+          role: (role || "STUDENT").toUpperCase(),
+          letter_type: (role || "").toUpperCase() === "TEACHER" ? "Teacher Employment Letter" : "Student Admission Letter",
+          school_name: "Mercy T College Nursery and Primary School",
+          username: username || normalizedEmail,
+          class_or_programme: classOrProgramme || "",
+          academic_session: academicSession || "",
+          department: department || "",
+          application_number: applicationNumber || "",
           approved_at: new Date().toISOString(),
         },
         metric: {
@@ -131,8 +160,8 @@ const trackApprovalEvent = async ({ email, firstName, lastName, role, registrati
             type: "profile",
             attributes: {
               email: normalizedEmail,
-              first_name: firstName || undefined,
-              last_name: lastName || undefined,
+              first_name: profileFirstName || undefined,
+              last_name: profileLastName || undefined,
             },
           },
         },
@@ -141,7 +170,7 @@ const trackApprovalEvent = async ({ email, firstName, lastName, role, registrati
   };
 
   try {
-    await fetch(`${KLAVIYO_API_BASE}/events/`, {
+    const response = await fetch(`${KLAVIYO_API_BASE}/events/`, {
       method: "POST",
       headers: {
         Authorization: `Klaviyo-API-Key ${apiKey}`,
@@ -150,9 +179,25 @@ const trackApprovalEvent = async ({ email, firstName, lastName, role, registrati
         Accept: "application/json",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15000),
     });
-  } catch (err) {
-    console.error("[Klaviyo Track Event Error]:", err.message);
+    if (response.status !== 202) {
+      const errorPayload = await response.json().catch(() => ({}));
+      const message = errorPayload.errors?.map(({ detail, title }) => detail || title).filter(Boolean).join("; ")
+        || `Klaviyo rejected the approval event (HTTP ${response.status}).`;
+      const error = new Error(message);
+      error.code = `KLAVIYO_HTTP_${response.status}`;
+      throw error;
+    }
+    console.log(`[Klaviyo Approval Event Accepted] role=${(role || "STUDENT").toUpperCase()}`);
+    return {
+      success: true,
+      acceptedCount: 1,
+      response: "Accepted by Klaviyo for Application Approved flow processing",
+    };
+  } catch (error) {
+    console.error(`[Klaviyo Approval Event Failed] code=${error.code || "UNKNOWN"} message=${error.message}`);
+    throw error;
   }
 };
 

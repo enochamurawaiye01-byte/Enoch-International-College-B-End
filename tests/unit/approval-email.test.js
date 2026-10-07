@@ -1,31 +1,22 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const nodemailer = require("nodemailer");
 const userRepository = require("../../src/modules/users/user.repository");
 const { prisma } = require("../../src/config/database");
 const userService = require("../../src/modules/users/user.service");
 
-test("approved student and teacher accounts can resend their role-specific emails", async () => {
+test("approved student and teacher accounts trigger their Klaviyo approval flow", async () => {
   const originalFindById = userRepository.findById;
   const originalStudentFindUnique = prisma.student.findUnique;
   const originalStaffFindUnique = prisma.staff.findUnique;
-  const originalCreateTransport = nodemailer.createTransport;
-  const originalUser = process.env.SMTP_USER;
-  const originalPassword = process.env.SMTP_PASSWORD;
-  const originalPort = process.env.SMTP_PORT;
-  const originalSecure = process.env.SMTP_SECURE;
-  const messages = [];
-
-  process.env.SMTP_USER = "mailer-test@school.invalid";
-  process.env.SMTP_PASSWORD = "test-only-password";
-  process.env.SMTP_PORT = "465";
-  process.env.SMTP_SECURE = "true";
-  nodemailer.createTransport = () => ({
-    sendMail: async (message) => {
-      messages.push(message);
-      return { messageId: `message-${messages.length}`, response: "250 OK", accepted: [message.to], rejected: [] };
-    },
-  });
+  const originalFetch = global.fetch;
+  const originalPrivateKey = process.env.KLAVIYO_PRIVATE_API_KEY;
+  const originalApiKey = process.env.KLAVIYO_API_KEY;
+  const events = [];
+  process.env.KLAVIYO_PRIVATE_API_KEY = "klaviyo-test-key";
+  global.fetch = async (_url, options) => {
+    events.push(JSON.parse(options.body).data.attributes);
+    return { status: 202, ok: true, json: async () => ({}) };
+  };
 
   try {
     userRepository.findById = async (id) => ({
@@ -51,25 +42,23 @@ test("approved student and teacher accounts can resend their role-specific email
 
     assert.equal(studentResult.email, true);
     assert.equal(teacherResult.email, true);
-    assert.equal(messages.length, 2);
-    assert.match(messages[0].text, /Congratulations!/);
-    assert.match(messages[0].text, /Registration number: MIC\/2026\/0123456789ABCDEF/);
-    assert.match(messages[1].text, /EMPLOYMENT APPOINTMENT LETTER/);
-    assert.match(messages[1].text, /Staff ID: MIC\/STF\/0123456789ABCDEF/);
-    assert.match(messages[1].text, /Department: Science/);
+    assert.equal(events.length, 2);
+    assert.equal(events[0].properties.role, "STUDENT");
+    assert.equal(events[0].properties.registration_number, "MIC/2026/0123456789ABCDEF");
+    assert.equal(events[0].properties.class_or_programme, "Primary 4");
+    assert.equal(events[0].properties.academic_session, "2026/2027");
+    assert.equal(events[1].properties.role, "TEACHER");
+    assert.equal(events[1].properties.registration_number, "MIC/STF/0123456789ABCDEF");
+    assert.equal(events[1].properties.department, "Science");
   } finally {
     userRepository.findById = originalFindById;
     prisma.student.findUnique = originalStudentFindUnique;
     prisma.staff.findUnique = originalStaffFindUnique;
-    nodemailer.createTransport = originalCreateTransport;
-    if (originalUser === undefined) delete process.env.SMTP_USER;
-    else process.env.SMTP_USER = originalUser;
-    if (originalPassword === undefined) delete process.env.SMTP_PASSWORD;
-    else process.env.SMTP_PASSWORD = originalPassword;
-    if (originalPort === undefined) delete process.env.SMTP_PORT;
-    else process.env.SMTP_PORT = originalPort;
-    if (originalSecure === undefined) delete process.env.SMTP_SECURE;
-    else process.env.SMTP_SECURE = originalSecure;
+    global.fetch = originalFetch;
+    if (originalPrivateKey === undefined) delete process.env.KLAVIYO_PRIVATE_API_KEY;
+    else process.env.KLAVIYO_PRIVATE_API_KEY = originalPrivateKey;
+    if (originalApiKey === undefined) delete process.env.KLAVIYO_API_KEY;
+    else process.env.KLAVIYO_API_KEY = originalApiKey;
   }
 });
 

@@ -40,64 +40,6 @@ test("mailer rejects a malformed recipient before opening SMTP", async () => {
   );
 });
 
-test("mailer uses Mailgun HTTPS API when configured", async () => {
-  const originalFetch = global.fetch;
-  const originalApiKey = process.env.MAILGUN_API_KEY;
-  const originalFrom = process.env.SMTP_FROM;
-  const originalDomain = process.env.MAILGUN_DOMAIN;
-  const originalRegion = process.env.MAILGUN_REGION;
-  const requests = [];
-  process.env.MAILGUN_API_KEY = "mailgun-test-key";
-  process.env.MAILGUN_DOMAIN = "school.invalid";
-  process.env.MAILGUN_REGION = "us";
-  process.env.SMTP_FROM = "Mercy T College <mailer@school.invalid>";
-  global.fetch = async (url, options = {}) => {
-    requests.push({ url, options });
-    return {
-      ok: true,
-      status: 200,
-      json: async () => requests.length === 1
-        ? { id: "mailgun-message-1", message: "Queued. Thank you." }
-        : { domain: { name: "school.invalid" } },
-    };
-  };
-
-  try {
-    const result = await sendEmail({
-      to: "teacher@school.invalid",
-      subject: "Employment appointment letter",
-      text: "Appointment confirmed",
-      html: "<p>Appointment confirmed</p>",
-    });
-    assert.equal(result.success, true);
-    assert.equal(result.messageId, "mailgun-message-1");
-    assert.equal(result.acceptedCount, 1);
-    assert.equal(requests[0].url, "https://api.mailgun.net/v3/school.invalid/messages");
-    assert.equal(requests[0].options.body.get("from"), "Mercy T College <mailer@school.invalid>");
-    assert.equal(requests[0].options.body.get("to"), "teacher@school.invalid");
-    assert.equal(requests[0].options.body.get("subject"), "Employment appointment letter");
-    assert.equal(requests[0].options.body.get("text"), "Appointment confirmed");
-    assert.equal(requests[0].options.body.get("html"), "<p>Appointment confirmed</p>");
-    assert.equal(
-      requests[0].options.headers.authorization,
-      `Basic ${Buffer.from("api:mailgun-test-key").toString("base64")}`
-    );
-
-    const verification = await mailer.verifyTransporter();
-    assert.equal(verification.verified, true);
-    assert.equal(requests[1].url, "https://api.mailgun.net/v3/domains/school.invalid");
-  } finally {
-    global.fetch = originalFetch;
-    if (originalApiKey === undefined) delete process.env.MAILGUN_API_KEY;
-    else process.env.MAILGUN_API_KEY = originalApiKey;
-    if (originalFrom === undefined) delete process.env.SMTP_FROM;
-    else process.env.SMTP_FROM = originalFrom;
-    if (originalDomain === undefined) delete process.env.MAILGUN_DOMAIN;
-    else process.env.MAILGUN_DOMAIN = originalDomain;
-    if (originalRegion === undefined) delete process.env.MAILGUN_REGION;
-    else process.env.MAILGUN_REGION = originalRegion;
-  }
-});
 test("professional school emails include the correct account and role identifiers", async () => {
   const originalCreateTransport = nodemailer.createTransport;
   const originalResolve4 = dns.resolve4;

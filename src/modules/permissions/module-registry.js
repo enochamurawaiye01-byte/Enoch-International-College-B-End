@@ -25,7 +25,7 @@ const MODULES = [
   ["inventory", "Inventory & Stock", "/inventory", ["/pages/admin/inventory.html"]],
   ["invoices", "Fee Invoices", "/invoices", ["/pages/admin/invoices.html"]],
   ["jobs", "Background Jobs", null, []],
-  ["klaviyo", "Legacy Marketing Integration (Disabled)", null, []],
+  ["klaviyo", "Klaviyo Approval Flow", null, []],
   ["lessons", "Lesson Notes & Plans", "/lessons", ["/pages/admin/lessons.html", "/pages/teacher/lessons.html"]],
   ["library", "Library & Book Loans", "/library", ["/pages/admin/library.html", "/pages/student/library.html"]],
   ["management", "Executive Management", "/management", ["/pages/management/dashboard.html"]],

@@ -96,7 +96,7 @@ const deliverApprovalEmail = async (target, registrationNumber, profiles = {}) =
     department,
   });
   if (!result?.success || !result.acceptedCount) {
-    throw new Error("The SMTP server did not confirm acceptance of the approval email.");
+    throw new Error("Klaviyo did not accept the approval event for flow processing.");
   }
   return result;
 };

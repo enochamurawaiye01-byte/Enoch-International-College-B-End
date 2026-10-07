@@ -1,20 +1,17 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const nodemailer = require("nodemailer");
 const repository = require("../../src/modules/teachers/teacher.repository");
 const { prisma } = require("../../src/config/database");
 const teacherService = require("../../src/modules/teachers/teacher.service");
 
-test("activating an inactive teacher sends an employment appointment email", async () => {
+test("activating an inactive teacher triggers the Klaviyo employment approval flow", async () => {
   const originalFindById = repository.findById;
   const originalUpdate = repository.update;
   const originalUserUpdate = prisma.user.update;
-  const originalCreateTransport = nodemailer.createTransport;
-  const originalUser = process.env.SMTP_USER;
-  const originalPassword = process.env.SMTP_PASSWORD;
-  const originalPort = process.env.SMTP_PORT;
-  const originalSecure = process.env.SMTP_SECURE;
-  const messages = [];
+  const originalFetch = global.fetch;
+  const originalPrivateKey = process.env.KLAVIYO_PRIVATE_API_KEY;
+  const originalApiKey = process.env.KLAVIYO_API_KEY;
+  const events = [];
   const teacher = {
     id: "staff-1",
     firstName: "Daniel",
@@ -32,16 +29,11 @@ test("activating an inactive teacher sends an employment appointment email", asy
     department: { name: "Science" },
   };
 
-  process.env.SMTP_USER = "mailer-test@school.invalid";
-  process.env.SMTP_PASSWORD = "test-only-password";
-  process.env.SMTP_PORT = "465";
-  process.env.SMTP_SECURE = "true";
-  nodemailer.createTransport = () => ({
-    sendMail: async (message) => {
-      messages.push(message);
-      return { messageId: "teacher-approval-test", response: "250 OK", accepted: [message.to], rejected: [] };
-    },
-  });
+  process.env.KLAVIYO_PRIVATE_API_KEY = "klaviyo-test-key";
+  global.fetch = async (_url, options) => {
+    events.push(JSON.parse(options.body).data.attributes);
+    return { status: 202, ok: true, json: async () => ({}) };
+  };
 
   try {
     repository.findById = async () => teacher;
@@ -56,26 +48,21 @@ test("activating an inactive teacher sends an employment appointment email", asy
 
     const result = await teacherService.changeStatus("staff-1", "ACTIVE");
 
-    assert.equal(messages.length, 1);
-    assert.equal(messages[0].to, "daniel@school.invalid");
-    assert.match(messages[0].subject, /Employment appointment letter/);
-    assert.match(messages[0].text, /EMPLOYMENT APPOINTMENT LETTER/);
-    assert.match(messages[0].text, /Staff ID: MIC\/STF\/0123456789ABCDEF/);
-    assert.match(messages[0].text, /Department: Science/);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].profile.data.attributes.email, "daniel@school.invalid");
+    assert.equal(events[0].properties.role, "TEACHER");
+    assert.equal(events[0].properties.letter_type, "Teacher Employment Letter");
+    assert.equal(events[0].properties.registration_number, "MIC/STF/0123456789ABCDEF");
+    assert.equal(events[0].properties.department, "Science");
     assert.equal(result.communication.email, true);
-    assert.equal(result.communication.emailMessageId, "teacher-approval-test");
   } finally {
     repository.findById = originalFindById;
     repository.update = originalUpdate;
     prisma.user.update = originalUserUpdate;
-    nodemailer.createTransport = originalCreateTransport;
-    if (originalUser === undefined) delete process.env.SMTP_USER;
-    else process.env.SMTP_USER = originalUser;
-    if (originalPassword === undefined) delete process.env.SMTP_PASSWORD;
-    else process.env.SMTP_PASSWORD = originalPassword;
-    if (originalPort === undefined) delete process.env.SMTP_PORT;
-    else process.env.SMTP_PORT = originalPort;
-    if (originalSecure === undefined) delete process.env.SMTP_SECURE;
-    else process.env.SMTP_SECURE = originalSecure;
+    global.fetch = originalFetch;
+    if (originalPrivateKey === undefined) delete process.env.KLAVIYO_PRIVATE_API_KEY;
+    else process.env.KLAVIYO_PRIVATE_API_KEY = originalPrivateKey;
+    if (originalApiKey === undefined) delete process.env.KLAVIYO_API_KEY;
+    else process.env.KLAVIYO_API_KEY = originalApiKey;
   }
 });

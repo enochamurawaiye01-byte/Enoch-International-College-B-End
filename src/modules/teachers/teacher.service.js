@@ -51,7 +51,7 @@ const changeStatus = async (id, status) => {
    department: teacher.department?.name,
   });
   if (!result?.success || !result.acceptedCount) {
-   throw new Error("The SMTP server did not confirm acceptance of the employment appointment email.");
+   throw new Error("Klaviyo did not accept the employment approval event for flow processing.");
   }
   communication.email = true;
   communication.emailMessageId = result.messageId;
