@@ -129,6 +129,45 @@ const getTransporter = () => {
   return transporter;
 };
 
+const sendViaBrevo = async ({ to, subject, html, text, from }) => {
+  const senderEmail = from.match(/<([^<>]+)>/)?.[1] || from;
+  const senderName = from.match(/^([^<>]+)</)?.[1].trim().replace(/^["']|["']$/g, "") || "Mercy T College";
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(senderEmail)) {
+    throw new Error("SMTP_FROM must be a valid verified sender email when using BREVO_API_KEY.");
+  }
+
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "api-key": process.env.BREVO_API_KEY,
+      "content-type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: { name: senderName, email: senderEmail },
+      to: [{ email: to }],
+      subject,
+      ...(text ? { textContent: text } : {}),
+      ...(html ? { htmlContent: html } : {}),
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.messageId) {
+    const error = new Error(result.message || `Brevo rejected email delivery (HTTP ${response.status}).`);
+    error.code = result.code || `BREVO_HTTP_${response.status}`;
+    throw error;
+  }
+  console.log(`[BREVO SUCCESS] Message accepted | Subject: "${subject}" | MessageID: ${result.messageId}`);
+  return {
+    success: true,
+    messageId: result.messageId,
+    response: "Accepted by Brevo transactional email API",
+    acceptedCount: 1,
+    rejectedCount: 0,
+  };
+};
+
 /**
  * Generic Base Email Sender Function
  */
@@ -140,8 +179,17 @@ const sendEmail = async ({ to, subject, html, text }) => {
   const activeTransporter = getTransporter();
   const from = process.env.SMTP_MAIL || process.env.SMTP_FROM || process.env.SMTP_USER || "mercytcollege@gmail.com";
 
+  if (process.env.BREVO_API_KEY?.trim()) {
+    try {
+      return await sendViaBrevo({ to: to.trim(), subject, html, text, from });
+    } catch (error) {
+      console.error(`[BREVO FAILED] Message rejected | Subject: "${subject}" | Code: ${error.code || "UNKNOWN"} | Error: ${error.message}`);
+      throw error;
+    }
+  }
+
   if (!activeTransporter) {
-    throw new Error("Email delivery is not configured. Set SMTP_USER and SMTP_PASSWORD in the server environment.");
+    throw new Error("Email delivery is not configured. Set BREVO_API_KEY and a verified SMTP_FROM sender for Render, or configure SMTP_USER and SMTP_PASSWORD on a host that permits SMTP.");
   }
 
   try {
@@ -366,9 +414,26 @@ const sendRoleActivatedEmail = async ({ to, name, username, staffId, role }) => 
  * Transporter Connection Verifier
  */
 const verifyTransporter = async () => {
+  if (process.env.BREVO_API_KEY?.trim()) {
+    try {
+      const response = await fetch("https://api.brevo.com/v3/account", {
+        headers: { "api-key": process.env.BREVO_API_KEY, accept: "application/json" },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.message || `Brevo rejected API verification (HTTP ${response.status}).`);
+      }
+      console.log("[BREVO VERIFY SUCCESS] Transactional email API credentials verified.");
+      return { verified: true, message: "Brevo transactional email API credentials verified successfully." };
+    } catch (error) {
+      console.error(`[BREVO VERIFY FAILED] ${error.message}`);
+      return { verified: false, reason: "VERIFICATION_FAILED", message: error.message };
+    }
+  }
   const activeTransporter = getTransporter();
   if (!activeTransporter) {
-    return { verified: false, reason: "NO_SMTP_CREDENTIALS", message: "SMTP credentials (SMTP_USER/SMTP_PASSWORD) are missing in environment." };
+    return { verified: false, reason: "NO_EMAIL_CREDENTIALS", message: "Set BREVO_API_KEY and a verified SMTP_FROM sender, or configure SMTP_USER and SMTP_PASSWORD on a host that permits SMTP." };
   }
   try {
     await activeTransporter.verify();

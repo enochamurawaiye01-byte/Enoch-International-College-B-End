@@ -40,6 +40,55 @@ test("mailer rejects a malformed recipient before opening SMTP", async () => {
   );
 });
 
+test("mailer uses Brevo HTTPS API when configured", async () => {
+  const originalFetch = global.fetch;
+  const originalApiKey = process.env.BREVO_API_KEY;
+  const originalFrom = process.env.SMTP_FROM;
+  const requests = [];
+  process.env.BREVO_API_KEY = "brevo-test-key";
+  process.env.SMTP_FROM = "Mercy T College <mailer@school.invalid>";
+  global.fetch = async (url, options = {}) => {
+    requests.push({ url, options });
+    return {
+      ok: true,
+      status: 201,
+      json: async () => requests.length === 1 ? { messageId: "brevo-message-1" } : { email: "mailer@school.invalid" },
+    };
+  };
+
+  try {
+    const result = await sendEmail({
+      to: "teacher@school.invalid",
+      subject: "Employment appointment letter",
+      text: "Appointment confirmed",
+      html: "<p>Appointment confirmed</p>",
+    });
+    assert.equal(result.success, true);
+    assert.equal(result.messageId, "brevo-message-1");
+    assert.equal(result.acceptedCount, 1);
+    assert.equal(requests[0].url, "https://api.brevo.com/v3/smtp/email");
+    assert.equal(requests[0].options.headers["api-key"], "brevo-test-key");
+    assert.deepEqual(JSON.parse(requests[0].options.body), {
+      sender: { name: "Mercy T College", email: "mailer@school.invalid" },
+      to: [{ email: "teacher@school.invalid" }],
+      subject: "Employment appointment letter",
+      textContent: "Appointment confirmed",
+      htmlContent: "<p>Appointment confirmed</p>",
+    });
+
+    const verification = await mailer.verifyTransporter();
+    assert.equal(verification.verified, true);
+    assert.equal(requests[1].url, "https://api.brevo.com/v3/account");
+    assert.equal(requests[1].options.headers["api-key"], "brevo-test-key");
+  } finally {
+    global.fetch = originalFetch;
+    if (originalApiKey === undefined) delete process.env.BREVO_API_KEY;
+    else process.env.BREVO_API_KEY = originalApiKey;
+    if (originalFrom === undefined) delete process.env.SMTP_FROM;
+    else process.env.SMTP_FROM = originalFrom;
+  }
+});
+
 test("professional school emails include the correct account and role identifiers", async () => {
   const originalCreateTransport = nodemailer.createTransport;
   const originalResolve4 = dns.resolve4;
