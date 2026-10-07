@@ -5,6 +5,7 @@ const repository = require("./teacher.repository");
 const assignmentService = require("../teacher-assignments/teacher-assignment.service");
 const { uploadFile, getFileUrl, removeStoredFile } = require("../../config/storage");
 const { prisma } = require("../../config/database");
+const { sendApprovalEmail } = require("../../config/mailer");
 const attachAssignmentPeriods = async (assignments = []) => {
  const sessionIds = [...new Set(assignments.map((item) => item.sessionId).filter(Boolean))];
  const termIds = [...new Set(assignments.map((item) => item.termId).filter(Boolean))];
@@ -29,9 +30,36 @@ const update = (id, data) => staffService.update(id, data);
 const changeStatus = async (id, status) => {
  if (!["ACTIVE", "INACTIVE", "SUSPENDED", "DEACTIVATED"].includes(status)) throw new Error("Invalid teacher status.");
  const teacher = await getById(id);
+ const wasActive = teacher.user.status === "ACTIVE";
  await repository.update(id, { status: status === "ACTIVE" ? "ACTIVE" : "INACTIVE" });
  await require("../../config/database").prisma.user.update({ where: { id: teacher.user.id }, data: { status } });
- return getById(id);
+ const updated = await getById(id);
+ if (status !== "ACTIVE" || wasActive) return updated;
+
+ const communication = { email: false, errors: [] };
+ if (!teacher.user.email) {
+  communication.errors.push("The teacher account has no email address.");
+  return { ...updated, communication };
+ }
+ try {
+  const result = await sendApprovalEmail({
+   to: teacher.user.email,
+   name: teacher.user.fullName || `${teacher.firstName} ${teacher.lastName}`,
+   username: teacher.user.email,
+   role: "TEACHER",
+   registrationNumber: teacher.staffNumber,
+   department: teacher.department?.name,
+  });
+  if (!result?.success || !result.acceptedCount) {
+   throw new Error("The SMTP server did not confirm acceptance of the employment appointment email.");
+  }
+  communication.email = true;
+  communication.emailMessageId = result.messageId;
+ } catch (error) {
+  communication.errors.push(error.message);
+  console.error(`[Teacher Approval Email Failed] userId=${teacher.user.id} code=${error.code || "UNKNOWN"} message=${error.message}`);
+ }
+ return { ...updated, communication };
 };
 const getAssignments = async (userId, query) => {
  const teacher = await repository.findByUserId(userId);
