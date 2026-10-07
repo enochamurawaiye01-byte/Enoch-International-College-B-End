@@ -161,7 +161,7 @@ const changeStatus = async (id, status, actor) => {
     } else {
       const existingStaff = await prisma.staff.findUnique({ where: { userId: id } });
       if (!existingStaff) {
-        const staffNumber = `MTC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
+        const staffNumber = `MIC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
         assignedRegNumber = staffNumber;
         await prisma.staff.create({
           data: {

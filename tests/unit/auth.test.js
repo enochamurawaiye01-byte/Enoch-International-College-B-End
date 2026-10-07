@@ -72,7 +72,7 @@ describe("Registration application validation", () => {
 describe("Student registration number generation", () => {
     it("uses a year-scoped unique identifier and retries existing numbers", async () => {
         const issued = new Set();
-        const existingNumber = `STU/2026/${"A".repeat(16)}`;
+        const existingNumber = `MIC/2026/${"A".repeat(16)}`;
         issued.add(existingNumber);
         const client = {
             student: {
@@ -88,7 +88,7 @@ describe("Student registration number generation", () => {
             issued.add(registrationNumber);
         }
 
-        assert.ok(generated.every((registrationNumber) => /^STU\/2026\/[A-F0-9]{16}$/.test(registrationNumber)));
+        assert.ok(generated.every((registrationNumber) => /^MIC\/2026\/[A-F0-9]{16}$/.test(registrationNumber)));
         assert.equal(new Set(generated).size, 100);
         assert.ok(!generated.includes(existingNumber));
     });

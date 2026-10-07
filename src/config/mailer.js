@@ -34,7 +34,11 @@ const createTransporter = () => {
   const port = Number(process.env.SMTP_PORT || 587);
   const user = (process.env.SMTP_USER || "").trim();
   const pass = (process.env.SMTP_PASSWORD || "").trim();
-  const secure = port === 465;
+  const secureSetting = (process.env.SMTP_SECURE || "").trim().toLowerCase();
+  if (secureSetting && !["true", "false"].includes(secureSetting)) {
+    throw new Error("SMTP_SECURE must be set to true or false.");
+  }
+  const secure = secureSetting ? secureSetting === "true" : port === 465;
 
   if (!user || !pass) {
     return null;
@@ -44,7 +48,7 @@ const createTransporter = () => {
     host,
     port,
     secure,
-    requireTLS: port === 587,
+    requireTLS: !secure && port === 587,
     tls: { minVersion: "TLSv1.2" },
     connectionTimeout: 15000,
     greetingTimeout: 10000,
@@ -83,6 +87,14 @@ const sendEmail = async ({ to, subject, html, text }) => {
       text,
       html,
     });
+    const recipientAccepted = (info.accepted || []).some(
+      (recipient) => String(recipient).toLowerCase() === to.trim().toLowerCase()
+    );
+    if (!recipientAccepted) {
+      const error = new Error("SMTP server did not accept the email recipient.");
+      error.code = "SMTP_RECIPIENT_REJECTED";
+      throw error;
+    }
     console.log(`[SMTP SUCCESS] Message accepted | Subject: "${subject}" | MessageID: ${info.messageId} | Response: ${info.response}`);
     return {
       success: true,

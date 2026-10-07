@@ -325,7 +325,7 @@ const activateRole = async ({ token, assignmentId }, actorUser) => {
         await tx.staff.create({
           data: {
             userId: assignment.userId,
-            staffNumber: `MTC/STF/${crypto.randomBytes(4).toString("hex").toUpperCase()}`,
+            staffNumber: `MIC/STF/${crypto.randomBytes(4).toString("hex").toUpperCase()}`,
             firstName,
             lastName,
             jobTitle: assignment.role.name.split("_").map((word) => word[0] + word.slice(1).toLowerCase()).join(" "),

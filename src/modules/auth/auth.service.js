@@ -147,7 +147,7 @@ const register = async (data) => {
         const staff = role === "TEACHER" ? await tx.staff.create({
             data: {
                 userId: user.id,
-                staffNumber: `MTC/STF/${crypto.randomBytes(16).toString("hex").toUpperCase()}`,
+                staffNumber: `MIC/STF/${crypto.randomBytes(16).toString("hex").toUpperCase()}`,
                 firstName,
                 middleName: middleName || null,
                 lastName,
@@ -531,5 +531,4 @@ module.exports = {
     changePassword,
     verifyToken,
 };
-
 
