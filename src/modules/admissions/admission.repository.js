@@ -2,7 +2,7 @@ const { prisma } = require("../../config/database");
 
 const include = {
 	desiredClass: { include: { classLevel: true } },
-	convertedStudent: { select: { id: true, registrationNumber: true, firstName: true, lastName: true } },
+	convertedStudent: { select: { id: true, userId: true, registrationNumber: true, firstName: true, lastName: true } },
 };
 
 const create = (data, client = prisma) => client.admission.create({ data, include });

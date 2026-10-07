@@ -59,6 +59,72 @@ const changeRole = async (id, role, actor) => {
   return roleService.changeUserRoles(id, { roles: [role] }, actor);
 };
 
+const deliverApprovalEmail = async (target, registrationNumber, profiles = {}) => {
+  if (!target.email) throw new Error("The applicant account has no email address.");
+
+  let classOrProgramme;
+  let academicSession;
+  let department;
+  if (target.role === "STUDENT") {
+    const student = profiles.student || await prisma.student.findUnique({
+      where: { userId: target.id },
+      include: { currentClass: true, currentSession: true },
+    });
+    if (!student) throw new Error("The approved student profile could not be found.");
+    classOrProgramme = student.currentClass?.name;
+    academicSession = student.currentSession?.name;
+  } else if (target.role === "PARENT") {
+    throw new Error("Parent accounts do not receive student or staff approval letters.");
+  } else {
+    const staff = profiles.staff || await prisma.staff.findUnique({
+      where: { userId: target.id },
+      include: { department: true },
+    });
+    if (!staff) throw new Error("The approved staff profile could not be found.");
+    registrationNumber = staff.staffNumber;
+    department = staff.department?.name;
+  }
+
+  const result = await sendApprovalEmail({
+    to: target.email,
+    name: target.fullName,
+    username: target.email,
+    role: target.role,
+    registrationNumber,
+    classOrProgramme,
+    academicSession,
+    department,
+  });
+  if (!result?.success || !result.acceptedCount) {
+    throw new Error("The SMTP server did not confirm acceptance of the approval email.");
+  }
+  return result;
+};
+
+const resendApprovalEmail = async (id, actor) => {
+  assertAdmin(actor);
+  const target = await getById(id);
+  if (target.status !== "ACTIVE") throw new AppError("Only approved accounts can receive an approval email.", 409, "USER_NOT_ACTIVE");
+  if (target.role === "PARENT") throw new AppError("Parent accounts do not receive student or staff approval letters.", 422, "APPROVAL_EMAIL_ROLE_INVALID");
+  const student = target.role === "STUDENT"
+    ? await prisma.student.findUnique({ where: { userId: target.id }, include: { currentClass: true, currentSession: true } })
+    : null;
+  const staff = target.role !== "STUDENT"
+    ? await prisma.staff.findUnique({ where: { userId: target.id }, include: { department: true } })
+    : null;
+  if ((target.role === "STUDENT" && !student) || (target.role !== "STUDENT" && !staff)) {
+    throw new AppError("Approval emails are only available for accounts with a student or staff profile.", 422, "APPROVAL_EMAIL_ROLE_INVALID");
+  }
+  const registrationNumber = student?.registrationNumber || staff?.staffNumber || null;
+  try {
+    const result = await deliverApprovalEmail(target, registrationNumber, { student, staff });
+    return { email: true, emailMessageId: result.messageId, emailAcceptedCount: result.acceptedCount };
+  } catch (error) {
+    console.error(`[Approval Email Failed] userId=${target.id} role=${target.role} code=${error.code || "UNKNOWN"} message=${error.message}`);
+    return { email: false, errors: [error.message] };
+  }
+};
+
 const activateStudentApplication = async (target) => prisma.$transaction(async (tx) => {
   await tx.user.updateMany({ where: { id: target.id, status: target.status }, data: { status: "ACTIVE" } });
   const student = await tx.student.findUnique({ where: { userId: target.id } });
@@ -215,19 +281,17 @@ const changeStatus = async (id, status, actor) => {
 
     const communication = { email: false, sms: false, registrationNumber: assignedRegNumber, errors: followUpErrors };
 
-    if (target.email) {
+    if (target.role !== "PARENT") {
       try {
-        const nameParts = (target.fullName || "User").trim().split(/\s+/);
-        const firstName = nameParts[0] || "";
-        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
-
-        const result = await sendApprovalEmail({ to: target.email, name: target.fullName, username: target.email, role: target.role, registrationNumber: assignedRegNumber });
-        if (!result?.success) throw new Error("The mailer did not accept the approval email.");
+        const result = await deliverApprovalEmail(target, assignedRegNumber);
         communication.email = true;
         communication.emailMessageId = result.messageId;
       } catch (error) {
         communication.errors.push(`Email: ${error.message}`);
+        console.error(`[Approval Email Failed] userId=${target.id} role=${target.role} code=${error.code || "UNKNOWN"} message=${error.message}`);
       }
+    } else {
+      communication.errors.push("No approval email is sent for parent accounts.");
     }
     return { ...(await getById(id)), registrationNumber: assignedRegNumber, communication };
   } else if (status === "DEACTIVATED" || status === "SUSPENDED") {
@@ -287,4 +351,4 @@ const remove = async (id, actor) => {
   return { id, fullName: target.fullName, message: "User deleted successfully" };
 };
 
-module.exports = { create, list, getById, update, changeRole, changeStatus, resetPassword, remove };
+module.exports = { create, list, getById, update, changeRole, changeStatus, resendApprovalEmail, resetPassword, remove };

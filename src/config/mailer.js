@@ -130,14 +130,14 @@ const studentApplicationApproved = async ({ to, name, username, applicationNumbe
 };
 
 const studentAdmissionApproved = async ({ to, name, username, applicationNumber, registrationNumber, classOrProgramme, academicSession }) => {
-  const subject = "Student enrollment confirmed | Mercy T College";
+  const subject = "Congratulations on your admission | Mercy T College";
   const loginName = username || to;
   const classText = classOrProgramme || "To be confirmed by the school";
   const sessionText = academicSession || "Current academic session";
-  const text = `Dear ${name},\n\nYour enrollment at Mercy T College Nursery and Primary School is confirmed.\n\nStudent name: ${name}\nApplication reference: ${applicationNumber || "Not available"}\nRegistration number: ${registrationNumber || "Not available"}\nAccount username: ${loginName || "Not available"}\nClass / level: ${classText}\nAcademic session: ${sessionText}\n\nKeep your registration number for school records and future communication. Use your registered email address as your account username. For account access assistance, contact the school administration.\n\nRegards,\nMercy T College Admissions Office`;
+  const text = `Dear ${name},\n\nCongratulations! We are pleased to confirm your admission to Mercy T College Nursery and Primary School.\n\nStudent name: ${name}\nApplication reference: ${applicationNumber || "Not available"}\nRegistration number: ${registrationNumber || "Not available"}\nAccount username: ${loginName || "Not available"}\nClass / level: ${classText}\nAcademic session: ${sessionText}\n\nKeep your registration number for school records and future communication. Use your registered email address as your account username. For account access assistance, contact the school administration.\n\nRegards,\nMercy T College Admissions Office`;
   const html = emailFrame("Student enrollment confirmed", `
     <p style="font-size:15px;line-height:1.6;">Dear <strong>${escapeHtml(name)}</strong>,</p>
-    <p style="font-size:14px;line-height:1.7;">Your enrollment at Mercy T College Nursery and Primary School is confirmed. Please retain the details below for your school records.</p>
+    <p style="font-size:14px;line-height:1.7;">Congratulations! We are pleased to confirm your admission to Mercy T College Nursery and Primary School. Please retain these details for your school records.</p>
     <div style="padding:16px;background:#F1F2D6;border-left:4px solid #A33B45;line-height:1.9;">
       <p style="margin:0;"><strong>Student name:</strong> ${escapeHtml(name)}</p>
       <p style="margin:0;"><strong>Application reference:</strong> ${escapeHtml(applicationNumber || "Not available")}</p>
@@ -185,14 +185,15 @@ const studentAdmissionRejected = async ({ to, name }) => {
  * Teacher/Staff Account Approved Template
  */
 const teacherAccountApproved = async ({ to, name, username, staffId, department, role }) => {
-  const subject = "Staff appointment confirmed | Mercy T College";
+  const subject = "Employment appointment letter | Mercy T College";
   const loginName = username || to;
   const roleText = formatRoleLabel(role || "TEACHER");
   const deptText = department || "To be confirmed by the school";
-  const text = `Dear ${name},\n\nWe are pleased to confirm that your staff appointment at Mercy T College Nursery and Primary School has been approved.\n\nStaff name: ${name}\nStaff ID: ${staffId || "Not assigned"}\nAccount username: ${loginName || "Not available"}\nPosition: ${roleText}\nDepartment: ${deptText}\nAppointment status: Active\n\nUse your registered email address as your account username. Please contact the school administration for onboarding or workspace access assistance.\n\nRegards,\nHuman Resources\nMercy T College`;
+  const text = `Dear ${name},\n\nEMPLOYMENT APPOINTMENT LETTER\n\nMercy T College is pleased to offer and confirm your appointment at the school. We congratulate you on your successful application and welcome you to the team.\n\nStaff name: ${name}\nStaff ID: ${staffId || "Not assigned"}\nAccount username: ${loginName || "Not available"}\nPosition: ${roleText}\nDepartment: ${deptText}\nAppointment status: Active\n\nPlease contact Human Resources for your reporting date, onboarding requirements, and any employment terms not included in this appointment notice. Use your registered email address as your account username.\n\nYours sincerely,\nHuman Resources\nMercy T College`;
   const html = emailFrame("Staff appointment confirmed", `
     <p style="font-size:15px;line-height:1.6;">Dear <strong>${escapeHtml(name)}</strong>,</p>
-    <p style="font-size:14px;line-height:1.7;">We are pleased to confirm that your staff appointment at Mercy T College Nursery and Primary School has been approved.</p>
+    <p style="font-size:14px;line-height:1.7;"><strong>EMPLOYMENT APPOINTMENT LETTER</strong></p>
+    <p style="font-size:14px;line-height:1.7;">Mercy T College is pleased to offer and confirm your appointment at the school. We congratulate you on your successful application and welcome you to the team.</p>
     <div style="padding:16px;background:#F1F2D6;border-left:4px solid #13283E;line-height:1.9;">
       <p style="margin:0;"><strong>Staff name:</strong> ${escapeHtml(name)}</p>
       <p style="margin:0;"><strong>Staff ID:</strong> <strong style="color:#13283E;">${escapeHtml(staffId || "Not assigned")}</strong></p>
@@ -201,7 +202,7 @@ const teacherAccountApproved = async ({ to, name, username, staffId, department,
       <p style="margin:0;"><strong>Department:</strong> ${escapeHtml(deptText)}</p>
       <p style="margin:0;"><strong>Appointment status:</strong> Active</p>
     </div>
-    <p style="font-size:14px;line-height:1.7;">Use your registered email address as your account username. Please contact the school administration for onboarding or workspace access assistance.</p>
+    <p style="font-size:14px;line-height:1.7;">Please contact Human Resources for your reporting date, onboarding requirements, and any employment terms not included in this appointment notice. Use your registered email address as your account username.</p>
   `);
   return sendEmail({ to, subject, html, text });
 };

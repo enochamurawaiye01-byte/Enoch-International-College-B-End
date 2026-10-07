@@ -110,9 +110,12 @@ test("professional school emails include the correct account and role identifier
     assert.doesNotMatch(messages[0].text, /Registration number:/);
     assert.equal(messages[1].to, "student@school.invalid");
     assert.match(messages[1].text, /Registration number: MIC\/2026\/0011223344556677/);
+    assert.match(messages[1].text, /Congratulations!/);
     assert.match(messages[1].text, /Account username: student@school\.invalid/);
     assert.equal(messages[2].to, "teacher@school.invalid");
     assert.match(messages[2].text, /Staff ID: MIC\/STF\/2026\/001/);
+    assert.match(messages[2].text, /EMPLOYMENT APPOINTMENT LETTER/);
+    assert.match(messages[2].text, /welcome you to the team/);
     assert.match(messages[2].text, /Position: Class Teacher/);
     assert.equal(messages[3].to, "teacher@school.invalid");
     assert.match(messages[3].text, /HEAD_TEACHER|Head Teacher/);

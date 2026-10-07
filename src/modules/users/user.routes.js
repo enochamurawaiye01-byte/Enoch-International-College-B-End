@@ -13,6 +13,7 @@ router.get("/:id", controller.getById);
 router.patch("/:id", validate(updateUserSchema), controller.update);
 router.patch("/:id/role", validate(roleSchema), controller.changeRole);
 router.patch("/:id/status", validate(statusSchema), controller.changeStatus);
+router.post("/:id/approval-email", controller.resendApprovalEmail);
 router.patch("/:id/password", validate(passwordSchema), controller.resetPassword);
 router.delete("/:id", controller.remove);
 module.exports = router;

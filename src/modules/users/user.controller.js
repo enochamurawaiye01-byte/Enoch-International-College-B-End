@@ -5,6 +5,7 @@ const getById = async (req, res, next) => { try { return res.json({ success: tru
 const update = async (req, res, next) => { try { return res.json({ success: true, data: await service.update(req.params.id, req.body, req.user) }); } catch (error) { next(error); } };
 const changeRole = async (req, res, next) => { try { return res.json({ success: true, data: await service.changeRole(req.params.id, req.body.role, req.user) }); } catch (error) { next(error); } };
 const changeStatus = async (req, res, next) => { try { return res.json({ success: true, data: await service.changeStatus(req.params.id, req.body.status, req.user) }); } catch (error) { next(error); } };
+const resendApprovalEmail = async (req, res, next) => { try { return res.json({ success: true, data: await service.resendApprovalEmail(req.params.id, req.user) }); } catch (error) { next(error); } };
 const resetPassword = async (req, res, next) => { try { return res.json({ success: true, data: await service.resetPassword(req.params.id, req.body.password, req.user) }); } catch (error) { next(error); } };
 const remove = async (req, res, next) => { try { return res.json({ success: true, data: await service.remove(req.params.id, req.user) }); } catch (error) { next(error); } };
-module.exports = { create, list, getById, update, changeRole, changeStatus, resetPassword, remove };
+module.exports = { create, list, getById, update, changeRole, changeStatus, resendApprovalEmail, resetPassword, remove };
