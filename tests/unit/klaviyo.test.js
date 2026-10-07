@@ -54,6 +54,7 @@ test("Klaviyo Integration Unit Tests", async (t) => {
       assert.equal(requests[0].url, "https://a.klaviyo.com/api/events/");
       assert.equal(requests[0].options.headers.Authorization, "Klaviyo-API-Key klaviyo-test-key");
       assert.equal(requests[0].options.headers.Revision, "2026-07-15");
+      assert.equal(requests[0].options.headers["Content-Type"], "application/vnd.api+json");
       const event = JSON.parse(requests[0].options.body).data.attributes;
       assert.equal(event.metric.data.attributes.name, "Application Approved");
       assert.equal(event.profile.data.attributes.email, "teacher@school.invalid");

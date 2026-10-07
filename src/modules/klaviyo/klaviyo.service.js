@@ -74,7 +74,7 @@ const subscribeProfileToList = async ({ email, firstName, lastName, phoneNumber 
       headers: {
         Authorization: `Klaviyo-API-Key ${apiKey}`,
         Revision: KLAVIYO_REVISION,
-        "Content-Type": "application/json",
+        "Content-Type": "application/vnd.api+json",
         Accept: "application/json",
       },
       body: JSON.stringify(payload),
@@ -175,7 +175,7 @@ const trackApprovalEvent = async ({
       headers: {
         Authorization: `Klaviyo-API-Key ${apiKey}`,
         Revision: KLAVIYO_REVISION,
-        "Content-Type": "application/json",
+        "Content-Type": "application/vnd.api+json",
         Accept: "application/json",
       },
       body: JSON.stringify(payload),

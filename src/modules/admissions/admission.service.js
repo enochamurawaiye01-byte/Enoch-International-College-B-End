@@ -225,11 +225,11 @@ const convertToStudent = async (id, data = {}) => {
 				registrationNumber: student.registrationNumber,
 				classOrProgramme: student.currentClass?.name
 			});
-			if (!result?.success) throw new Error("The mailer did not accept the enrollment confirmation email.");
+			if (!result?.success || !result.acceptedCount) throw new Error("Klaviyo did not accept the enrollment approval event.");
 			communication.email = true;
 			communication.messageId = result.messageId;
 		} catch (error) {
-			communication.errors.push("Enrollment completed, but the confirmation email was not accepted by SMTP.");
+			communication.errors.push(`Enrollment completed, but Klaviyo did not accept the approval event: ${error.message}`);
 			console.error("[Student Enrollment Email Error]:", error.message);
 		}
 	}
