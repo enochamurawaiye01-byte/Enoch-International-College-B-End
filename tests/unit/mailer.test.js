@@ -1,6 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const nodemailer = require("nodemailer");
+const dns = require("node:dns").promises;
+const net = require("node:net");
+const { EventEmitter } = require("node:events");
 const mailer = require("../../src/config/mailer");
 const { sendEmail } = mailer;
 
@@ -39,6 +42,9 @@ test("mailer rejects a malformed recipient before opening SMTP", async () => {
 
 test("professional school emails include the correct account and role identifiers", async () => {
   const originalCreateTransport = nodemailer.createTransport;
+  const originalResolve4 = dns.resolve4;
+  const originalLookup = dns.lookup;
+  const originalConnect = net.connect;
   const originalUser = process.env.SMTP_USER;
   const originalPassword = process.env.SMTP_PASSWORD;
   const originalPort = process.env.SMTP_PORT;
@@ -125,8 +131,47 @@ test("professional school emails include the correct account and role identifier
       sendEmail({ to: "rejected@school.invalid", subject: "Test", text: "Test" }),
       (error) => error.code === "SMTP_RECIPIENT_REJECTED"
     );
+
+    const connectOptions = [];
+    dns.resolve4 = async () => {
+      throw Object.assign(new Error("A record resolver unavailable"), { code: "ECONNREFUSED" });
+    };
+    dns.lookup = async (_host, options) => {
+      assert.deepEqual(options, { family: 4, all: true });
+      return [
+        { address: "192.0.2.1", family: 4 },
+        { address: "192.0.2.2", family: 4 },
+      ];
+    };
+    net.connect = (options) => {
+      connectOptions.push(options);
+      const socket = new EventEmitter();
+      socket.destroy = (error) => socket.emit("error", error);
+      queueMicrotask(() => {
+        if (connectOptions.length === 1) {
+          const error = new Error("First IPv4 address is unreachable");
+          error.code = "ENETUNREACH";
+          socket.emit("error", error);
+        } else {
+          socket.emit("connect");
+        }
+      });
+      return socket;
+    };
+    const connectedSocket = await new Promise((resolve, reject) => {
+      transportOptions.getSocket({ host: "smtp.gmail.com", port: 465 }, (error, options) => {
+        if (error) return reject(error);
+        resolve(options.connection);
+      });
+    });
+    assert.ok(connectedSocket);
+    assert.equal(connectOptions.length, 2);
+    assert.ok(connectOptions.every(({ family, port }) => family === 4 && port === 465));
   } finally {
     nodemailer.createTransport = originalCreateTransport;
+    dns.resolve4 = originalResolve4;
+    dns.lookup = originalLookup;
+    net.connect = originalConnect;
     if (originalUser === undefined) delete process.env.SMTP_USER;
     else process.env.SMTP_USER = originalUser;
     if (originalPassword === undefined) delete process.env.SMTP_PASSWORD;

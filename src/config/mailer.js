@@ -1,6 +1,70 @@
 const nodemailer = require("nodemailer");
+const dns = require("node:dns").promises;
+const net = require("node:net");
 
 let transporter = null;
+
+const resolveIPv4 = async (host) => {
+  let resolveError;
+  try {
+    const addresses = await dns.resolve4(host);
+    if (addresses.length) return addresses;
+  } catch (error) {
+    resolveError = error;
+  }
+  try {
+    const addresses = await dns.lookup(host, { family: 4, all: true });
+    if (addresses.length) return addresses.map(({ address }) => address);
+  } catch (error) {
+    if (resolveError) {
+      error.message = `IPv4 DNS lookup failed (${resolveError.message}; ${error.message})`;
+    }
+    throw error;
+  }
+  throw resolveError || new Error(`No IPv4 addresses found for SMTP host ${host}.`);
+};
+
+const connectOverIPv4 = (options, callback) => {
+  resolveIPv4(options.host).then((addresses) => {
+    let nextAddress = 0;
+    let lastError;
+    const deadline = Date.now() + (options.connectionTimeout || 15000);
+    const tryNextAddress = () => {
+      if (nextAddress >= addresses.length) {
+        callback(lastError || new Error(`No IPv4 addresses found for SMTP host ${options.host}.`));
+        return;
+      }
+      const socket = net.connect({
+        host: addresses[nextAddress++],
+        port: options.port,
+        family: 4,
+      });
+      const timeout = setTimeout(() => {
+        const error = new Error("Connection timeout");
+        error.code = "ETIMEDOUT";
+        socket.destroy(error);
+      }, Math.max(1, deadline - Date.now()));
+      const onError = (error) => {
+        clearTimeout(timeout);
+        socket.removeListener("connect", onConnect);
+        lastError = error;
+        tryNextAddress();
+      };
+      const onConnect = () => {
+        clearTimeout(timeout);
+        socket.removeListener("error", onError);
+        callback(null, { connection: socket });
+      };
+      socket.once("error", onError);
+      socket.once("connect", onConnect);
+    };
+    if (!addresses.length) {
+      callback(new Error(`No IPv4 addresses found for SMTP host ${options.host}.`));
+      return;
+    }
+    tryNextAddress();
+  }).catch(callback);
+};
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
   "&": "&amp;",
@@ -54,6 +118,7 @@ const createTransporter = () => {
     greetingTimeout: 10000,
     socketTimeout: 20000,
     auth: { user, pass },
+    getSocket: connectOverIPv4,
   });
 };
 
