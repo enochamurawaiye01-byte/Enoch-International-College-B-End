@@ -44,7 +44,7 @@ const getPublishedChildResults = async (userId, studentId, query = {}) => {
 	const reports = await prisma.reportCard.findMany({
 		where: {
 			studentId,
-			published: true,
+			parentPublished: true,
 			...(query.sessionId ? { sessionId: query.sessionId } : {}),
 			...(query.termId ? { termId: query.termId } : {}),
 		},

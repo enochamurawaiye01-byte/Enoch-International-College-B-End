@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGURATION } = require("../../src/modules/report-cards/report-card.utils");
+const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGURATION, reportCardPublicationState, reportCardPortalPublicationUpdate } = require("../../src/modules/report-cards/report-card.utils");
 const { canManageResults } = require("../../src/modules/report-cards/report-card.service");
 
 test("calculates totals and grades from configured component maxima", () => {
@@ -44,4 +44,33 @@ test("disables third-term assessments only for graduating classes", () => {
 
 test("teacher score-entry permission never grants administrator result override", async () => {
   assert.equal(await canManageResults({ userId: "teacher-1", role: "TEACHER" }), false);
+});
+
+test("publishing a result to one portal preserves the other portal state", () => {
+  assert.deepEqual(reportCardPublicationState({ studentPublished: false, parentPublished: true }, { portal: "student", published: true }), {
+    studentPublished: true,
+    parentPublished: true,
+    published: true,
+  });
+  assert.deepEqual(reportCardPublicationState({ studentPublished: true, parentPublished: true }, { portal: "parent", published: false }), {
+    studentPublished: true,
+    parentPublished: false,
+    published: true,
+  });
+});
+
+test("legacy publication updates both portals and bulk updates keep the aggregate flag accurate", () => {
+  assert.deepEqual(reportCardPublicationState({ studentPublished: false, parentPublished: false }, { published: true }), {
+    studentPublished: true,
+    parentPublished: true,
+    published: true,
+  });
+  assert.deepEqual(reportCardPortalPublicationUpdate("student", false, true), {
+    studentPublished: false,
+    published: true,
+  });
+  assert.deepEqual(reportCardPortalPublicationUpdate("parent", false, false), {
+    parentPublished: false,
+    published: false,
+  });
 });

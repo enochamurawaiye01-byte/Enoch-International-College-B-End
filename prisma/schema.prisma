@@ -1729,7 +1729,9 @@ model ReportCard {
   teacherComment   String?
   principalComment String?
 
-  published Boolean @default(false)
+  published       Boolean @default(false)
+  studentPublished Boolean @default(false)
+  parentPublished  Boolean @default(false)
 
   entries ReportCardEntry[]
 

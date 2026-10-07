@@ -4,8 +4,17 @@ const score = z.coerce.number().min(0).nullable().optional();
 const entry = z.object({ subjectId: uuid, firstTest: score, secondTest: score, assignment: score, exam: score, teacherComment: z.string().trim().max(500).nullable().optional() }).strict();
 const createReportCardSchema = z.object({ studentId: uuid, sessionId: uuid, termId: uuid, teacherComment: z.string().trim().max(1000).nullable().optional(), principalComment: z.string().trim().max(1000).nullable().optional(), entries: z.array(entry).min(1) }).strict();
 const updateReportCardSchema = createReportCardSchema.omit({ studentId: true, sessionId: true, termId: true }).partial().strict().refine((data) => Object.keys(data).length > 0, "At least one field is required.");
-const publicationSchema = z.object({ published: z.boolean() }).strict();
-const classPublicationSchema = z.object({ classId: uuid, sessionId: uuid, termId: uuid, published: z.boolean() }).strict();
+const publicationSchema = z.object({
+	published: z.boolean().optional(),
+	portal: z.enum(["student", "parent"]).optional(),
+}).strict().refine((data) => data.published !== undefined, "Provide a publication status.");
+const classPublicationSchema = z.object({
+	classId: uuid,
+	sessionId: uuid,
+	termId: uuid,
+	published: z.boolean(),
+	portal: z.enum(["student", "parent"]).optional(),
+}).strict();
 const assessmentConfigurationSchema = z.object({
 	firstTestMax: z.coerce.number().positive().max(1000),
 	secondTestMax: z.coerce.number().positive().max(1000),

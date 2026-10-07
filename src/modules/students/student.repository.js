@@ -49,7 +49,7 @@ const updateStudent = async (studentId, data) =>
         },
     });
 
-const findById = async (id) => prisma.student.findUnique({ where: { id }, include: { user: { select: userSelect }, currentClass: { include: { classLevel: true } }, desiredDepartment: true, parentLinks: { include: { parent: true } }, enrollments: { include: { session: true, term: true, department: true, class: { include: { classLevel: true } } } }, promotions: true, reportCards: { where: { published: true }, include: { session: true, term: true, entries: { include: { subject: true } } }, orderBy: [{ session: { startDate: "desc" } }, { term: { type: "desc" } }] } } });
+const findById = async (id) => prisma.student.findUnique({ where: { id }, include: { user: { select: userSelect }, currentClass: { include: { classLevel: true } }, desiredDepartment: true, parentLinks: { include: { parent: true } }, enrollments: { include: { session: true, term: true, department: true, class: { include: { classLevel: true } } } }, promotions: true, reportCards: { where: { studentPublished: true }, include: { session: true, term: true, entries: { include: { subject: true } } }, orderBy: [{ session: { startDate: "desc" } }, { term: { type: "desc" } }] } } });
 const findAll = async ({ schoolId, search, classId, classIds, status } = {}) => {
     const conditions = [];
     const selectedClassIds = classId ? [classId] : classIds;

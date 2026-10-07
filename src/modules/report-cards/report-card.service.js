@@ -1,7 +1,7 @@
 const AppError = require("../../core/errors/AppError");
 const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./report-card.repository");
-const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGURATION, gradeFor, sum } = require("./report-card.utils");
+const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGURATION, gradeFor, sum, reportCardPublicationState, reportCardPortalPublicationUpdate } = require("./report-card.utils");
 const { prisma } = require("../../config/database");
 const { hasPermission } = require("../../core/middleware/authorization.middleware");
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"]);
@@ -145,8 +145,8 @@ const saveEntries = async (data, user) => {
 		for (const item of data.entries) {
 			const where = { studentId_sessionId_termId: { studentId: item.studentId, sessionId: data.sessionId, termId: data.termId } };
 			const existingReport = await tx.reportCard.findUnique({ where, include: { entries: true } });
-			if (existingReport?.published && !canCorrectPublished) throw new AppError("Published results can only be changed by an authorized administrator.", 403, "REPORT_CARD_LOCKED");
-			if (existingReport?.published && canCorrectPublished && !data.reason?.trim()) throw new AppError("An administrative reason is required to edit a published result.", 400, "REASON_REQUIRED");
+			if ((existingReport?.studentPublished || existingReport?.parentPublished || existingReport?.published) && !canCorrectPublished) throw new AppError("Published results can only be changed by an authorized administrator.", 403, "REPORT_CARD_LOCKED");
+			if ((existingReport?.studentPublished || existingReport?.parentPublished || existingReport?.published) && canCorrectPublished && !data.reason?.trim()) throw new AppError("An administrative reason is required to edit a published result.", 400, "REASON_REQUIRED");
 
 			const report = existingReport || await tx.reportCard.create({
 				data: { studentId: item.studentId, sessionId: data.sessionId, termId: data.termId, classId: schoolClass.id }
@@ -182,7 +182,7 @@ const saveEntries = async (data, user) => {
 				},
 				include: { subject: true }
 			});
-			if (existingReport?.published) {
+			if (existingReport?.studentPublished || existingReport?.parentPublished || existingReport?.published) {
 				await tx.auditLog.create({
 					data: {
 						userId: user.userId,
@@ -222,7 +222,7 @@ const getById = async (id, user) => {
 	if (!report) throw new NotFoundError("Report card not found");
 	if (!user) throw new AppError("Authentication required.", 401, "UNAUTHENTICATED");
 	if (user.role === "STUDENT" && report.student.userId !== user.userId) throw new AppError("You can only view your own report card.", 403, "REPORT_CARD_ACCESS_DENIED");
-	if (user.role === "STUDENT" && !report.published) throw new AppError("This report card has not been published.", 403, "REPORT_CARD_NOT_PUBLISHED");
+	if (user.role === "STUDENT" && !report.studentPublished) throw new AppError("This report card has not been published to the student portal.", 403, "REPORT_CARD_NOT_PUBLISHED");
 	if (user.role === "TEACHER") {
 		const staff = await repository.findStaffByUserId(user.userId);
 		const allowedEntries = staff ? await Promise.all(report.entries.map(async (entry) => Boolean(await repository.findTeacherAssignment({
@@ -306,19 +306,23 @@ const update = async (id, data, user) => {
 	return repository.update(id, data);
 };
 
-const publish = async (id, published, user) => {
+const publish = async (id, data, user) => {
 	if (!(await canManageResults(user))) throw new AppError("Only authorized administrators can publish report cards.", 403, "REPORT_CARD_PUBLISH_DENIED");
 	return prisma.$transaction(async (tx) => {
 		const report = await tx.reportCard.findUnique({ where: { id }, include: { entries: true } });
 		if (!report) throw new NotFoundError("Report card not found");
-		if (published) await assertReportComplete(tx, report);
-		const updated = await tx.reportCard.update({ where: { id }, data: { published } });
+		const publicationState = reportCardPublicationState(report, data);
+		if (data.published) await assertReportComplete(tx, report);
+		const updated = await tx.reportCard.update({
+			where: { id },
+			data: publicationState,
+		});
 		await tx.auditLog.create({ data: {
 			userId: user.userId,
-			action: published ? "PUBLISH_REPORT_CARD" : "UNPUBLISH_REPORT_CARD",
+			action: data.published ? "PUBLISH_REPORT_CARD" : "UNPUBLISH_REPORT_CARD",
 			entity: "ReportCard",
 			entityId: id,
-			description: `${published ? "Published" : "Unpublished"} report card for student ${report.studentId}, session ${report.sessionId}, term ${report.termId}`,
+			description: `${data.published ? "Published" : "Unpublished"} report card${data.portal ? ` on the ${data.portal} portal` : " on both portals"} for student ${report.studentId}, session ${report.sessionId}, term ${report.termId}`,
 		} });
 		return updated;
 	}, { isolationLevel: "Serializable" });
@@ -365,18 +369,34 @@ const publishClassTerm = async (data, user) => {
 				await assertReportComplete(tx, report);
 			}
 		}
-		const result = await tx.reportCard.updateMany({
-			where: { classId: schoolClass.id, studentId: { in: studentIds }, sessionId: session.id, termId: term.id },
-			data: { published: data.published },
-		});
+		const where = { classId: schoolClass.id, studentId: { in: studentIds }, sessionId: session.id, termId: term.id };
+		let result;
+		if (!data.portal) {
+			result = await tx.reportCard.updateMany({
+				where,
+				data: { published: data.published, studentPublished: data.published, parentPublished: data.published },
+			});
+		} else {
+			const [alreadyPublished, otherNotPublished] = await Promise.all([
+				tx.reportCard.updateMany({
+					where: { ...where, [data.portal === "student" ? "parentPublished" : "studentPublished"]: true },
+					data: reportCardPortalPublicationUpdate(data.portal, data.published, true),
+				}),
+				tx.reportCard.updateMany({
+					where: { ...where, [data.portal === "student" ? "parentPublished" : "studentPublished"]: false },
+					data: reportCardPortalPublicationUpdate(data.portal, data.published, false),
+				}),
+			]);
+			result = { count: alreadyPublished.count + otherNotPublished.count };
+		}
 		await tx.auditLog.create({ data: {
 			userId: user.userId,
 			action: data.published ? "PUBLISH_CLASS_TERM_RESULTS" : "UNPUBLISH_CLASS_TERM_RESULTS",
 			entity: "ReportCard",
 			entityId: reports[0]?.id || null,
-			description: `${data.published ? "Published" : "Unpublished"} ${result.count} report cards for ${schoolClass.name}, ${session.name}, ${term.name}`,
+			description: `${data.published ? "Published" : "Unpublished"} ${result.count} report cards${data.portal ? ` on the ${data.portal} portal` : " on both portals"} for ${schoolClass.name}, ${session.name}, ${term.name}`,
 		} });
-		return { count: result.count, published: data.published };
+		return { count: result.count, published: data.published, portal: data.portal || "both" };
 	}, { isolationLevel: "Serializable" });
 };
 
@@ -394,7 +414,7 @@ const getAll = async (query, user) => {
 	if (query.teacherId) where.entries = { ...(where.entries || {}), some: { ...(where.entries?.some || {}), teacherId: query.teacherId } };
 	if (user.role === "STUDENT") {
 		where.student = { userId: user.userId };
-		where.published = true;
+		where.studentPublished = true;
 	}
 	let assignments = [];
 	if (user.role === "TEACHER") {

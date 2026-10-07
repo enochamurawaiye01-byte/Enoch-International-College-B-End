@@ -54,4 +54,23 @@ const canEnterTermAssessment = (classLevelCode, termType) => {
 	return !(graduatingClass && String(termType).toUpperCase() === "THIRD");
 };
 
-module.exports = { DEFAULT_ASSESSMENT_CONFIGURATION, calculateAssessment, canEnterTermAssessment, gradeFor, sum };
+const reportCardPublicationState = (report, { published, portal }) => {
+	const studentPublished = portal === "student" ? published : portal ? report.studentPublished : published;
+	const parentPublished = portal === "parent" ? published : portal ? report.parentPublished : published;
+	return { studentPublished, parentPublished, published: studentPublished || parentPublished };
+};
+
+const reportCardPortalPublicationUpdate = (portal, published, otherPortalPublished) => ({
+	[portal === "student" ? "studentPublished" : "parentPublished"]: published,
+	published: published || otherPortalPublished,
+});
+
+module.exports = {
+	DEFAULT_ASSESSMENT_CONFIGURATION,
+	calculateAssessment,
+	canEnterTermAssessment,
+	gradeFor,
+	sum,
+	reportCardPublicationState,
+	reportCardPortalPublicationUpdate,
+};
