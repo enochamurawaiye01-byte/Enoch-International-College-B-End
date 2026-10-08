@@ -68,11 +68,16 @@ const deliverApprovalEmail = async (target, registrationNumber, profiles = {}) =
   if (target.role === "STUDENT") {
     const student = profiles.student || await prisma.student.findUnique({
       where: { userId: target.id },
-      include: { currentClass: true, currentSession: true },
+      include: { currentClass: true },
     });
     if (!student) throw new Error("The approved student profile could not be found.");
     classOrProgramme = student.currentClass?.name;
-    academicSession = student.currentSession?.name;
+    const session = profiles.academicSession !== undefined
+      ? profiles.academicSession
+      : student.currentSessionId
+        ? await prisma.academicSession.findUnique({ where: { id: student.currentSessionId } })
+        : null;
+    academicSession = session?.name;
   } else if (target.role === "PARENT") {
     throw new Error("Parent accounts do not receive student or staff approval letters.");
   } else {
@@ -107,7 +112,7 @@ const resendApprovalEmail = async (id, actor) => {
   if (target.status !== "ACTIVE") throw new AppError("Only approved accounts can receive an approval email.", 409, "USER_NOT_ACTIVE");
   if (target.role === "PARENT") throw new AppError("Parent accounts do not receive student or staff approval letters.", 422, "APPROVAL_EMAIL_ROLE_INVALID");
   const student = target.role === "STUDENT"
-    ? await prisma.student.findUnique({ where: { userId: target.id }, include: { currentClass: true, currentSession: true } })
+    ? await prisma.student.findUnique({ where: { userId: target.id }, include: { currentClass: true } })
     : null;
   const staff = target.role !== "STUDENT"
     ? await prisma.staff.findUnique({ where: { userId: target.id }, include: { department: true } })
@@ -115,9 +120,12 @@ const resendApprovalEmail = async (id, actor) => {
   if ((target.role === "STUDENT" && !student) || (target.role !== "STUDENT" && !staff)) {
     throw new AppError("Approval emails are only available for accounts with a student or staff profile.", 422, "APPROVAL_EMAIL_ROLE_INVALID");
   }
+  const academicSession = student?.currentSessionId
+    ? await prisma.academicSession.findUnique({ where: { id: student.currentSessionId } })
+    : null;
   const registrationNumber = student?.registrationNumber || staff?.staffNumber || null;
   try {
-    const result = await deliverApprovalEmail(target, registrationNumber, { student, staff });
+    const result = await deliverApprovalEmail(target, registrationNumber, { student, staff, academicSession });
     return { email: true, emailMessageId: result.messageId, emailAcceptedCount: result.acceptedCount };
   } catch (error) {
     console.error(`[Approval Email Failed] userId=${target.id} role=${target.role} code=${error.code || "UNKNOWN"} message=${error.message}`);

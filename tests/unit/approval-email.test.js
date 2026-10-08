@@ -8,6 +8,7 @@ test("approved students receive congratulations and teachers receive an employme
   const originalFindById = userRepository.findById;
   const originalStudentFindUnique = prisma.student.findUnique;
   const originalStaffFindUnique = prisma.staff.findUnique;
+  const originalAcademicSessionFindUnique = prisma.academicSession.findUnique;
   const originalFetch = global.fetch;
   const originalMailgunKey = process.env.MAILGUN_API_KEY;
   const originalMailgunDomain = process.env.MAILGUN_DOMAIN;
@@ -29,15 +30,21 @@ test("approved students receive congratulations and teachers receive an employme
       role: id === "student-1" ? "STUDENT" : "TEACHER",
       status: "ACTIVE",
     });
-    prisma.student.findUnique = async () => ({
-      registrationNumber: "MIC/2026/0123456789ABCDEF",
-      currentClass: { name: "Primary 4" },
-      currentSession: { name: "2026/2027" },
-    });
+    prisma.student.findUnique = async (query) => {
+      assert.deepEqual(query.include, { currentClass: true });
+      return {
+        registrationNumber: "MIC/2026/0123456789ABCDEF",
+        currentSessionId: "session-1",
+        currentClass: { name: "Primary 4" },
+      };
+    };
     prisma.staff.findUnique = async () => ({
       staffNumber: "MIC/STF/0123456789ABCDEF",
       department: { name: "Science" },
     });
+    prisma.academicSession.findUnique = async ({ where }) => (
+      where.id === "session-1" ? { name: "2026/2027" } : null
+    );
 
     const actor = { userId: "admin-1", role: "ADMIN" };
     const studentResult = await userService.resendApprovalEmail("student-1", actor);
@@ -62,6 +69,7 @@ test("approved students receive congratulations and teachers receive an employme
     userRepository.findById = originalFindById;
     prisma.student.findUnique = originalStudentFindUnique;
     prisma.staff.findUnique = originalStaffFindUnique;
+    prisma.academicSession.findUnique = originalAcademicSessionFindUnique;
     global.fetch = originalFetch;
     if (originalMailgunKey === undefined) delete process.env.MAILGUN_API_KEY;
     else process.env.MAILGUN_API_KEY = originalMailgunKey;
