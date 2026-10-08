@@ -10,8 +10,14 @@ const { sendEmail } = mailer;
 test("mailer reports missing SMTP configuration as a failure", async () => {
   const originalUser = process.env.SMTP_USER;
   const originalPassword = process.env.SMTP_PASSWORD;
+  const originalMailgunKey = process.env.MAILGUN_API_KEY;
+  const originalMailgunDomain = process.env.MAILGUN_DOMAIN;
+  const originalMailgunFrom = process.env.MAILGUN_FROM_EMAIL;
   process.env.SMTP_USER = "";
   process.env.SMTP_PASSWORD = "";
+  process.env.MAILGUN_API_KEY = "";
+  process.env.MAILGUN_DOMAIN = "";
+  process.env.MAILGUN_FROM_EMAIL = "";
 
   try {
     await assert.rejects(
@@ -23,6 +29,121 @@ test("mailer reports missing SMTP configuration as a failure", async () => {
     else process.env.SMTP_USER = originalUser;
     if (originalPassword === undefined) delete process.env.SMTP_PASSWORD;
     else process.env.SMTP_PASSWORD = originalPassword;
+    if (originalMailgunKey === undefined) delete process.env.MAILGUN_API_KEY;
+    else process.env.MAILGUN_API_KEY = originalMailgunKey;
+    if (originalMailgunDomain === undefined) delete process.env.MAILGUN_DOMAIN;
+    else process.env.MAILGUN_DOMAIN = originalMailgunDomain;
+    if (originalMailgunFrom === undefined) delete process.env.MAILGUN_FROM_EMAIL;
+    else process.env.MAILGUN_FROM_EMAIL = originalMailgunFrom;
+  }
+});
+
+test("Mailgun API accepts transactional messages using configured sender and region", async () => {
+  const originalFetch = global.fetch;
+  const originalMailgunKey = process.env.MAILGUN_API_KEY;
+  const originalMailgunDomain = process.env.MAILGUN_DOMAIN;
+  const originalMailgunFrom = process.env.MAILGUN_FROM_EMAIL;
+  const originalMailgunRegion = process.env.MAILGUN_REGION;
+  const originalSmtpUser = process.env.SMTP_USER;
+  const requests = [];
+  process.env.MAILGUN_API_KEY = "mailgun-test-key";
+  process.env.MAILGUN_DOMAIN = "mg.example.invalid";
+  process.env.MAILGUN_FROM_EMAIL = "Mercy T College <noreply@mg.example.invalid>";
+  process.env.MAILGUN_REGION = "eu";
+  process.env.SMTP_USER = "";
+  global.fetch = async (url, options) => {
+    requests.push({ url, options });
+    return { ok: true, status: 200, json: async () => ({ id: "<test-message-id>", message: "Queued. Thank you." }) };
+  };
+
+  try {
+    const result = await sendEmail({
+      to: "recipient@example.com",
+      subject: "Test message",
+      text: "Plain-text body",
+      html: "<p>HTML body</p>",
+    });
+    assert.equal(result.success, true);
+    assert.equal(result.messageId, "<test-message-id>");
+    assert.equal(result.acceptedCount, 1);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "https://api.eu.mailgun.net/v3/mg.example.invalid/messages");
+    assert.equal(requests[0].options.headers.Authorization, `Basic ${Buffer.from("api:mailgun-test-key").toString("base64")}`);
+    assert.equal(requests[0].options.headers["Content-Type"], "application/x-www-form-urlencoded");
+    const fields = new URLSearchParams(requests[0].options.body);
+    assert.equal(fields.get("from"), "Mercy T College <noreply@mg.example.invalid>");
+    assert.equal(fields.get("to"), "recipient@example.com");
+    assert.equal(fields.get("subject"), "Test message");
+    assert.equal(fields.get("text"), "Plain-text body");
+    assert.equal(fields.get("html"), "<p>HTML body</p>");
+  } finally {
+    global.fetch = originalFetch;
+    if (originalMailgunKey === undefined) delete process.env.MAILGUN_API_KEY;
+    else process.env.MAILGUN_API_KEY = originalMailgunKey;
+    if (originalMailgunDomain === undefined) delete process.env.MAILGUN_DOMAIN;
+    else process.env.MAILGUN_DOMAIN = originalMailgunDomain;
+    if (originalMailgunFrom === undefined) delete process.env.MAILGUN_FROM_EMAIL;
+    else process.env.MAILGUN_FROM_EMAIL = originalMailgunFrom;
+    if (originalMailgunRegion === undefined) delete process.env.MAILGUN_REGION;
+    else process.env.MAILGUN_REGION = originalMailgunRegion;
+    if (originalSmtpUser === undefined) delete process.env.SMTP_USER;
+    else process.env.SMTP_USER = originalSmtpUser;
+  }
+});
+
+test("Mailgun API failures are surfaced without falling back to SMTP", async () => {
+  const originalFetch = global.fetch;
+  const originalMailgunKey = process.env.MAILGUN_API_KEY;
+  const originalMailgunDomain = process.env.MAILGUN_DOMAIN;
+  const originalMailgunFrom = process.env.MAILGUN_FROM_EMAIL;
+  const originalSmtpUser = process.env.SMTP_USER;
+  process.env.MAILGUN_API_KEY = "mailgun-test-key";
+  process.env.MAILGUN_DOMAIN = "mg.example.invalid";
+  process.env.MAILGUN_FROM_EMAIL = "noreply@mg.example.invalid";
+  process.env.SMTP_USER = "smtp-should-not-be-used@example.invalid";
+  global.fetch = async () => ({
+    ok: false,
+    status: 401,
+    json: async () => ({ message: "Forbidden" }),
+  });
+
+  try {
+    await assert.rejects(
+      sendEmail({ to: "recipient@example.com", subject: "Test", text: "Test" }),
+      (error) => error.code === "MAILGUN_HTTP_401" && error.message === "Forbidden"
+    );
+  } finally {
+    global.fetch = originalFetch;
+    if (originalMailgunKey === undefined) delete process.env.MAILGUN_API_KEY;
+    else process.env.MAILGUN_API_KEY = originalMailgunKey;
+    if (originalMailgunDomain === undefined) delete process.env.MAILGUN_DOMAIN;
+    else process.env.MAILGUN_DOMAIN = originalMailgunDomain;
+    if (originalMailgunFrom === undefined) delete process.env.MAILGUN_FROM_EMAIL;
+    else process.env.MAILGUN_FROM_EMAIL = originalMailgunFrom;
+    if (originalSmtpUser === undefined) delete process.env.SMTP_USER;
+    else process.env.SMTP_USER = originalSmtpUser;
+  }
+});
+
+test("partially configured Mailgun credentials fail explicitly", async () => {
+  const originalMailgunKey = process.env.MAILGUN_API_KEY;
+  const originalMailgunDomain = process.env.MAILGUN_DOMAIN;
+  const originalMailgunFrom = process.env.MAILGUN_FROM_EMAIL;
+  process.env.MAILGUN_API_KEY = "mailgun-test-key";
+  process.env.MAILGUN_DOMAIN = "";
+  process.env.MAILGUN_FROM_EMAIL = "noreply@example.invalid";
+  try {
+    await assert.rejects(
+      sendEmail({ to: "recipient@example.com", subject: "Test", text: "Test" }),
+      (error) => error.code === "MAILGUN_NOT_CONFIGURED"
+    );
+  } finally {
+    if (originalMailgunKey === undefined) delete process.env.MAILGUN_API_KEY;
+    else process.env.MAILGUN_API_KEY = originalMailgunKey;
+    if (originalMailgunDomain === undefined) delete process.env.MAILGUN_DOMAIN;
+    else process.env.MAILGUN_DOMAIN = originalMailgunDomain;
+    if (originalMailgunFrom === undefined) delete process.env.MAILGUN_FROM_EMAIL;
+    else process.env.MAILGUN_FROM_EMAIL = originalMailgunFrom;
   }
 });
 
@@ -49,6 +170,9 @@ test("professional school emails include the correct account and role identifier
   const originalPassword = process.env.SMTP_PASSWORD;
   const originalPort = process.env.SMTP_PORT;
   const originalSecure = process.env.SMTP_SECURE;
+  const originalMailgunKey = process.env.MAILGUN_API_KEY;
+  const originalMailgunDomain = process.env.MAILGUN_DOMAIN;
+  const originalMailgunFrom = process.env.MAILGUN_FROM_EMAIL;
   const messages = [];
   let transportOptions;
 
@@ -56,6 +180,9 @@ test("professional school emails include the correct account and role identifier
   process.env.SMTP_PASSWORD = "test-only-password";
   process.env.SMTP_PORT = "587";
   process.env.SMTP_SECURE = "true";
+  process.env.MAILGUN_API_KEY = "";
+  process.env.MAILGUN_DOMAIN = "";
+  process.env.MAILGUN_FROM_EMAIL = "";
   nodemailer.createTransport = (options) => {
     transportOptions = options;
     return {
@@ -180,5 +307,11 @@ test("professional school emails include the correct account and role identifier
     else process.env.SMTP_PORT = originalPort;
     if (originalSecure === undefined) delete process.env.SMTP_SECURE;
     else process.env.SMTP_SECURE = originalSecure;
+    if (originalMailgunKey === undefined) delete process.env.MAILGUN_API_KEY;
+    else process.env.MAILGUN_API_KEY = originalMailgunKey;
+    if (originalMailgunDomain === undefined) delete process.env.MAILGUN_DOMAIN;
+    else process.env.MAILGUN_DOMAIN = originalMailgunDomain;
+    if (originalMailgunFrom === undefined) delete process.env.MAILGUN_FROM_EMAIL;
+    else process.env.MAILGUN_FROM_EMAIL = originalMailgunFrom;
   }
 });

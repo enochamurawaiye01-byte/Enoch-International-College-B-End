@@ -1,9 +1,63 @@
 const nodemailer = require("nodemailer");
 const dns = require("node:dns").promises;
 const net = require("node:net");
-const klaviyoService = require("../modules/klaviyo/klaviyo.service");
 
 let transporter = null;
+
+const getMailgunConfig = () => {
+  const apiKey = (process.env.MAILGUN_API_KEY || "").trim();
+  const domain = (process.env.MAILGUN_DOMAIN || "").trim();
+  const from = (process.env.MAILGUN_FROM_EMAIL || "").trim();
+  const region = (process.env.MAILGUN_REGION || "us").trim().toLowerCase();
+  if (![apiKey, domain, from].some(Boolean)) return null;
+  if (!apiKey || !domain || !from) {
+    const error = new Error("Mailgun is partially configured. Set MAILGUN_API_KEY, MAILGUN_DOMAIN, and MAILGUN_FROM_EMAIL.");
+    error.code = "MAILGUN_NOT_CONFIGURED";
+    throw error;
+  }
+  if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i.test(domain) || domain.includes("..")) {
+    const error = new Error("MAILGUN_DOMAIN must be a valid Mailgun sending domain.");
+    error.code = "MAILGUN_DOMAIN_INVALID";
+    throw error;
+  }
+  if (!["us", "eu"].includes(region)) {
+    const error = new Error("MAILGUN_REGION must be either us or eu.");
+    error.code = "MAILGUN_REGION_INVALID";
+    throw error;
+  }
+  return { apiKey, domain, from, region };
+};
+
+const sendWithMailgun = async ({ to, subject, html, text }, config) => {
+  const apiBase = config.region === "eu" ? "https://api.eu.mailgun.net" : "https://api.mailgun.net";
+  const form = new URLSearchParams({ from: config.from, to, subject });
+  if (text) form.set("text", text);
+  if (html) form.set("html", html);
+
+  const response = await fetch(`${apiBase}/v3/${encodeURIComponent(config.domain)}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`api:${config.apiKey}`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: form,
+    signal: AbortSignal.timeout(15000),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.message || `Mailgun rejected the message (HTTP ${response.status}).`);
+    error.code = `MAILGUN_HTTP_${response.status}`;
+    throw error;
+  }
+  console.log(`[Mailgun SUCCESS] Message accepted | Subject: "${subject}" | MessageID: ${payload.id || "accepted"}`);
+  return {
+    success: true,
+    messageId: payload.id,
+    response: payload.message || "Accepted by Mailgun",
+    acceptedCount: 1,
+    rejectedCount: 0,
+  };
+};
 
 const resolveIPv4 = async (host) => {
   let resolveError;
@@ -138,10 +192,21 @@ const sendEmail = async ({ to, subject, html, text }) => {
     throw new Error("A valid email recipient is required.");
   }
 
+  const mailgunConfig = getMailgunConfig();
+  if (mailgunConfig) {
+    try {
+      return await sendWithMailgun({ to: to.trim(), subject, html, text }, mailgunConfig);
+    } catch (error) {
+      if (!error.code) error.code = "MAILGUN_REQUEST_FAILED";
+      console.error(`[Mailgun FAILED] Message rejected | Subject: "${subject}" | Code: ${error.code} | Error: ${error.message}`);
+      throw error;
+    }
+  }
+
   const from = process.env.SMTP_MAIL || process.env.SMTP_FROM || process.env.SMTP_USER || "mercytcollege@gmail.com";
   const activeTransporter = getTransporter();
   if (!activeTransporter) {
-    throw new Error("Email delivery is not configured. Set SMTP_USER and SMTP_PASSWORD in the server environment.");
+    throw new Error("Email delivery is not configured. Set Mailgun credentials or SMTP_USER and SMTP_PASSWORD in the server environment.");
   }
 
   try {
@@ -384,17 +449,31 @@ const verifyTransporter = async () => {
  * Wrappers for Backward Compatibility
  */
 const sendApprovalEmail = async ({ to, name, username, applicationNumber, role, registrationNumber, classOrProgramme, academicSession, department }) => {
-  return klaviyoService.trackApprovalEvent({
-    email: to,
-    name,
-    username,
-    applicationNumber,
-    role,
-    registrationNumber,
-    classOrProgramme,
-    academicSession,
-    department,
-  });
+  const normalizedRole = String(role || "").toUpperCase();
+  if (normalizedRole === "STUDENT") {
+    return studentAdmissionApproved({
+      to,
+      name,
+      username,
+      applicationNumber,
+      registrationNumber,
+      classOrProgramme,
+      academicSession,
+    });
+  }
+  if (normalizedRole === "TEACHER") {
+    return teacherAccountApproved({
+      to,
+      name,
+      username,
+      staffId: registrationNumber,
+      department,
+      role,
+    });
+  }
+  const error = new Error("Approval emails are only supported for student and teacher accounts.");
+  error.code = "APPROVAL_EMAIL_ROLE_INVALID";
+  throw error;
 };
 
 const sendRejectionEmail = async ({ to, name, role }) => {

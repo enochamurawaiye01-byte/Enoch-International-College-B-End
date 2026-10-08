@@ -4,14 +4,15 @@ const repository = require("../../src/modules/teachers/teacher.repository");
 const { prisma } = require("../../src/config/database");
 const teacherService = require("../../src/modules/teachers/teacher.service");
 
-test("activating an inactive teacher triggers the Klaviyo employment approval flow", async () => {
+test("activating an inactive teacher sends an employment letter through Mailgun", async () => {
   const originalFindById = repository.findById;
   const originalUpdate = repository.update;
   const originalUserUpdate = prisma.user.update;
   const originalFetch = global.fetch;
-  const originalPrivateKey = process.env.KLAVIYO_PRIVATE_API_KEY;
-  const originalApiKey = process.env.KLAVIYO_API_KEY;
-  const events = [];
+  const originalMailgunKey = process.env.MAILGUN_API_KEY;
+  const originalMailgunDomain = process.env.MAILGUN_DOMAIN;
+  const originalMailgunFrom = process.env.MAILGUN_FROM_EMAIL;
+  const messages = [];
   const teacher = {
     id: "staff-1",
     firstName: "Daniel",
@@ -29,10 +30,12 @@ test("activating an inactive teacher triggers the Klaviyo employment approval fl
     department: { name: "Science" },
   };
 
-  process.env.KLAVIYO_PRIVATE_API_KEY = "klaviyo-test-key";
-  global.fetch = async (_url, options) => {
-    events.push(JSON.parse(options.body).data.attributes);
-    return { status: 202, ok: true, json: async () => ({}) };
+  process.env.MAILGUN_API_KEY = "mailgun-test-key";
+  process.env.MAILGUN_DOMAIN = "mg.example.invalid";
+  process.env.MAILGUN_FROM_EMAIL = "Mercy T College <noreply@mg.example.invalid>";
+  global.fetch = async (url, options) => {
+    messages.push({ url, fields: new URLSearchParams(options.body) });
+    return { status: 200, ok: true, json: async () => ({ id: "<test-message-id>", message: "Queued. Thank you." }) };
   };
 
   try {
@@ -48,21 +51,24 @@ test("activating an inactive teacher triggers the Klaviyo employment approval fl
 
     const result = await teacherService.changeStatus("staff-1", "ACTIVE");
 
-    assert.equal(events.length, 1);
-    assert.equal(events[0].profile.data.attributes.email, "daniel@school.invalid");
-    assert.equal(events[0].properties.role, "TEACHER");
-    assert.equal(events[0].properties.letter_type, "Teacher Employment Letter");
-    assert.equal(events[0].properties.registration_number, "MIC/STF/0123456789ABCDEF");
-    assert.equal(events[0].properties.department, "Science");
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].url, "https://api.mailgun.net/v3/mg.example.invalid/messages");
+    assert.equal(messages[0].fields.get("to"), "daniel@school.invalid");
+    assert.equal(messages[0].fields.get("subject"), "Employment appointment letter | Mercy T College");
+    assert.match(messages[0].fields.get("text"), /Staff ID: MIC\/STF\/0123456789ABCDEF/);
+    assert.match(messages[0].fields.get("text"), /Department: Science/);
     assert.equal(result.communication.email, true);
+    assert.equal(result.communication.emailMessageId, "<test-message-id>");
   } finally {
     repository.findById = originalFindById;
     repository.update = originalUpdate;
     prisma.user.update = originalUserUpdate;
     global.fetch = originalFetch;
-    if (originalPrivateKey === undefined) delete process.env.KLAVIYO_PRIVATE_API_KEY;
-    else process.env.KLAVIYO_PRIVATE_API_KEY = originalPrivateKey;
-    if (originalApiKey === undefined) delete process.env.KLAVIYO_API_KEY;
-    else process.env.KLAVIYO_API_KEY = originalApiKey;
+    if (originalMailgunKey === undefined) delete process.env.MAILGUN_API_KEY;
+    else process.env.MAILGUN_API_KEY = originalMailgunKey;
+    if (originalMailgunDomain === undefined) delete process.env.MAILGUN_DOMAIN;
+    else process.env.MAILGUN_DOMAIN = originalMailgunDomain;
+    if (originalMailgunFrom === undefined) delete process.env.MAILGUN_FROM_EMAIL;
+    else process.env.MAILGUN_FROM_EMAIL = originalMailgunFrom;
   }
 });

@@ -1,7 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const klaviyoService = require("../../src/modules/klaviyo/klaviyo.service");
-const mailer = require("../../src/config/mailer");
 
 test("Klaviyo Integration Unit Tests", async (t) => {
   await t.test("should reject subscription without email", async () => {
@@ -28,7 +27,7 @@ test("Klaviyo Integration Unit Tests", async (t) => {
     assert.ok(typeof result.message === "string");
   });
 
-  await t.test("approval emails trigger the Klaviyo flow with role-specific details", async () => {
+  await t.test("Klaviyo approval events include role-specific details", async () => {
     const originalFetch = global.fetch;
     const originalPrivateKey = process.env.KLAVIYO_PRIVATE_API_KEY;
     const originalApiKey = process.env.KLAVIYO_API_KEY;
@@ -40,8 +39,8 @@ test("Klaviyo Integration Unit Tests", async (t) => {
     };
 
     try {
-      const result = await mailer.sendApprovalEmail({
-        to: "teacher@school.invalid",
+      const result = await klaviyoService.trackApprovalEvent({
+        email: "teacher@school.invalid",
         name: "Daniel Teacher",
         username: "teacher@school.invalid",
         role: "TEACHER",

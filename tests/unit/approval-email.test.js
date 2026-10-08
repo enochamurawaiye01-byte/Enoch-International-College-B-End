@@ -4,18 +4,21 @@ const userRepository = require("../../src/modules/users/user.repository");
 const { prisma } = require("../../src/config/database");
 const userService = require("../../src/modules/users/user.service");
 
-test("approved student and teacher accounts trigger their Klaviyo approval flow", async () => {
+test("approved students receive congratulations and teachers receive an employment letter", async () => {
   const originalFindById = userRepository.findById;
   const originalStudentFindUnique = prisma.student.findUnique;
   const originalStaffFindUnique = prisma.staff.findUnique;
   const originalFetch = global.fetch;
-  const originalPrivateKey = process.env.KLAVIYO_PRIVATE_API_KEY;
-  const originalApiKey = process.env.KLAVIYO_API_KEY;
-  const events = [];
-  process.env.KLAVIYO_PRIVATE_API_KEY = "klaviyo-test-key";
-  global.fetch = async (_url, options) => {
-    events.push(JSON.parse(options.body).data.attributes);
-    return { status: 202, ok: true, json: async () => ({}) };
+  const originalMailgunKey = process.env.MAILGUN_API_KEY;
+  const originalMailgunDomain = process.env.MAILGUN_DOMAIN;
+  const originalMailgunFrom = process.env.MAILGUN_FROM_EMAIL;
+  const requests = [];
+  process.env.MAILGUN_API_KEY = "mailgun-test-key";
+  process.env.MAILGUN_DOMAIN = "mg.example.invalid";
+  process.env.MAILGUN_FROM_EMAIL = "Mercy T College <noreply@mg.example.invalid>";
+  global.fetch = async (url, options) => {
+    requests.push({ url, fields: new URLSearchParams(options.body) });
+    return { status: 200, ok: true, json: async () => ({ id: "<test-message-id>", message: "Queued. Thank you." }) };
   };
 
   try {
@@ -42,23 +45,30 @@ test("approved student and teacher accounts trigger their Klaviyo approval flow"
 
     assert.equal(studentResult.email, true);
     assert.equal(teacherResult.email, true);
-    assert.equal(events.length, 2);
-    assert.equal(events[0].properties.role, "STUDENT");
-    assert.equal(events[0].properties.registration_number, "MIC/2026/0123456789ABCDEF");
-    assert.equal(events[0].properties.class_or_programme, "Primary 4");
-    assert.equal(events[0].properties.academic_session, "2026/2027");
-    assert.equal(events[1].properties.role, "TEACHER");
-    assert.equal(events[1].properties.registration_number, "MIC/STF/0123456789ABCDEF");
-    assert.equal(events[1].properties.department, "Science");
+    assert.equal(studentResult.emailMessageId, "<test-message-id>");
+    assert.equal(teacherResult.emailMessageId, "<test-message-id>");
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].url, "https://api.mailgun.net/v3/mg.example.invalid/messages");
+    assert.equal(requests[0].fields.get("to"), "student-1@school.invalid");
+    assert.equal(requests[0].fields.get("subject"), "Congratulations on your admission | Mercy T College");
+    assert.match(requests[0].fields.get("text"), /Registration number: MIC\/2026\/0123456789ABCDEF/);
+    assert.match(requests[0].fields.get("text"), /Class \/ level: Primary 4/);
+    assert.match(requests[0].fields.get("text"), /Academic session: 2026\/2027/);
+    assert.equal(requests[1].fields.get("to"), "teacher-1@school.invalid");
+    assert.equal(requests[1].fields.get("subject"), "Employment appointment letter | Mercy T College");
+    assert.match(requests[1].fields.get("text"), /Staff ID: MIC\/STF\/0123456789ABCDEF/);
+    assert.match(requests[1].fields.get("text"), /Department: Science/);
   } finally {
     userRepository.findById = originalFindById;
     prisma.student.findUnique = originalStudentFindUnique;
     prisma.staff.findUnique = originalStaffFindUnique;
     global.fetch = originalFetch;
-    if (originalPrivateKey === undefined) delete process.env.KLAVIYO_PRIVATE_API_KEY;
-    else process.env.KLAVIYO_PRIVATE_API_KEY = originalPrivateKey;
-    if (originalApiKey === undefined) delete process.env.KLAVIYO_API_KEY;
-    else process.env.KLAVIYO_API_KEY = originalApiKey;
+    if (originalMailgunKey === undefined) delete process.env.MAILGUN_API_KEY;
+    else process.env.MAILGUN_API_KEY = originalMailgunKey;
+    if (originalMailgunDomain === undefined) delete process.env.MAILGUN_DOMAIN;
+    else process.env.MAILGUN_DOMAIN = originalMailgunDomain;
+    if (originalMailgunFrom === undefined) delete process.env.MAILGUN_FROM_EMAIL;
+    else process.env.MAILGUN_FROM_EMAIL = originalMailgunFrom;
   }
 });
 

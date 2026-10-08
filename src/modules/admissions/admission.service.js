@@ -225,11 +225,11 @@ const convertToStudent = async (id, data = {}) => {
 				registrationNumber: student.registrationNumber,
 				classOrProgramme: student.currentClass?.name
 			});
-			if (!result?.success || !result.acceptedCount) throw new Error("Klaviyo did not accept the enrollment approval event.");
+			if (!result?.success || !result.acceptedCount) throw new Error("The email provider did not accept the enrollment approval message.");
 			communication.email = true;
 			communication.messageId = result.messageId;
 		} catch (error) {
-			communication.errors.push(`Enrollment completed, but Klaviyo did not accept the approval event: ${error.message}`);
+			communication.errors.push(`Enrollment completed, but the approval email could not be accepted by the email provider: ${error.message}`);
 			console.error("[Student Enrollment Email Error]:", error.message);
 		}
 	}
