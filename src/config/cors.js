@@ -23,8 +23,8 @@ const isAllowedOrigin = (origin) => {
 	try {
 		const { protocol, hostname } = new URL(origin);
 		return protocol === "https:"
-			&& (hostname === "mercy-international-college.vercel.app"
-				|| /^mercy-international-college-[a-z0-9-]+\.vercel\.app$/i.test(hostname));
+			&& (/^mercyt?-international-college\.vercel\.app$/i.test(hostname)
+				|| /^mercyt?-international-college-[a-z0-9-]+\.vercel\.app$/i.test(hostname));
 	} catch {
 		return false;
 	}
