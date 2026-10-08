@@ -139,7 +139,7 @@ const trackApprovalEvent = async ({
           registration_number: registrationNumber || "",
           role: (role || "STUDENT").toUpperCase(),
           letter_type: (role || "").toUpperCase() === "TEACHER" ? "Teacher Employment Letter" : "Student Admission Letter",
-          school_name: "Mercy T College Nursery and Primary School",
+          school_name: "Mercy T International College",
           username: username || normalizedEmail,
           class_or_programme: classOrProgramme || "",
           academic_session: academicSession || "",

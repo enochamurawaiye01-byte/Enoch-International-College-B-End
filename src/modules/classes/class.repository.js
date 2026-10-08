@@ -1,5 +1,28 @@
 const { prisma } = require("../../config/database");
 
+const currentClassTeacherInclude = (schoolId) => ({
+    classTeacherAssignments: {
+        where: { session: { isActive: true, ...(schoolId ? { schoolId } : {}) } },
+        include: {
+            staff: { select: { id: true, firstName: true, lastName: true, user: { select: { fullName: true } } } },
+            session: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+    },
+});
+
+const withCurrentClassTeacher = (schoolClass) => ({
+    ...schoolClass,
+    classTeacher: schoolClass.classTeacherAssignments?.[0]
+        ? {
+            id: schoolClass.classTeacherAssignments[0].staff.id,
+            fullName: schoolClass.classTeacherAssignments[0].staff.user.fullName,
+            session: schoolClass.classTeacherAssignments[0].session,
+        }
+        : null,
+});
+
 // Create a class/arm
 const createClass = async (data) => {
     return prisma.class.create({
@@ -30,12 +53,13 @@ const withCurrentStudentCounts = async (classes) => {
 };
 
 // Get all classes/arms
-const findAllClasses = async (classIds) => {
+const findAllClasses = async (classIds, schoolId) => {
     const classes = await prisma.class.findMany({
         where: classIds ? { id: { in: classIds } } : undefined,
         include: {
             classLevel: true,
             _count: { select: { students: true } },
+            ...currentClassTeacherInclude(schoolId),
         },
         orderBy: [
             {
@@ -48,7 +72,7 @@ const findAllClasses = async (classIds) => {
             },
         ],
     });
-    return withCurrentStudentCounts(classes);
+    return withCurrentStudentCounts(classes.map(withCurrentClassTeacher));
 };
 
 const findAllClassLevels = () => prisma.classLevel.findMany({
@@ -57,24 +81,26 @@ const findAllClassLevels = () => prisma.classLevel.findMany({
 });
 
 // Find one class by ID
-const findClassById = async (id) => {
-    return prisma.class.findUnique({
+const findClassById = async (id, schoolId) => {
+    const schoolClass = await prisma.class.findUnique({
         where: {
             id,
         },
         include: {
             classLevel: true,
+            ...currentClassTeacherInclude(schoolId),
         },
     });
+    return schoolClass ? withCurrentClassTeacher(schoolClass) : null;
 };
 
-const findClassesByLevel = async (classLevelId) => {
+const findClassesByLevel = async (classLevelId, schoolId) => {
     const classes = await prisma.class.findMany({
         where: { classLevelId },
-        include: { classLevel: true, _count: { select: { students: true } } },
+        include: { classLevel: true, _count: { select: { students: true } }, ...currentClassTeacherInclude(schoolId) },
         orderBy: { arm: "asc" },
     });
-    return withCurrentStudentCounts(classes);
+    return withCurrentStudentCounts(classes.map(withCurrentClassTeacher));
 };
 
 // Find class level by name

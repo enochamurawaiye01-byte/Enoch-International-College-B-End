@@ -1,8 +1,13 @@
 const { prisma } = require("../../config/database");
-const include = { parentLinks: { include: { student: { include: { currentClass: true } } } }, user: { select: { id: true, email: true, phoneNumber: true, status: true } } };
+const studentInclude = {
+    user: { select: { schoolId: true, fullName: true, email: true, phoneNumber: true } },
+    currentClass: { include: { classLevel: true } },
+    desiredDepartment: true,
+};
+const include = { parentLinks: { include: { student: { include: studentInclude } } }, user: { select: { id: true, email: true, phoneNumber: true, status: true } } };
 const findById = (id) => prisma.parent.findUnique({ where: { id }, include });
 const findByUserId = (userId) => prisma.parent.findUnique({ where: { userId }, include });
-const findChildForParent = (userId, studentId) => prisma.parentStudent.findFirst({ where: { studentId, parent: { userId } }, include: { student: { include: { user: { select: { email: true, phoneNumber: true } }, currentClass: { include: { classLevel: true } } } } } });
+const findChildForParent = (userId, studentId) => prisma.parentStudent.findFirst({ where: { studentId, parent: { userId } }, include: { student: { include: studentInclude } } });
 const findAll = () => prisma.parent.findMany({ include, orderBy: { lastName: "asc" } });
 const findUserByEmail = (email) => prisma.user.findUnique({ where: { email } });
 const findStudent = (id) => prisma.student.findUnique({ where: { id } });

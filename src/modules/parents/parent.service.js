@@ -3,6 +3,7 @@ const { hashPassword } = require("../../core/utils/hash");
 const AppError = require("../../core/errors/AppError");
 const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./parent.repository");
+const studentService = require("../students/student.service");
 const { getFileUrl } = require("../../config/storage");
 const getById = async (id) => { const parent = await repository.findById(id); if (!parent) throw new NotFoundError("Parent not found"); return parent; };
 const create = async (data, schoolId) => {
@@ -31,12 +32,12 @@ const registerParent = async (data, schoolId) => {
 const getChildrenForUser = async (userId) => {
 	const parent = await repository.findByUserId(userId);
 	if (!parent) throw new NotFoundError("Parent profile not found");
-	return Promise.all(parent.parentLinks.map(async (link) => ({ ...link.student, profileImageUrl: await getFileUrl(link.student.profileImageUrl) })));
+	return Promise.all(parent.parentLinks.map((link) => studentService.enrichCurrentClassTeacher(link.student)));
 };
 const getChildForUser = async (userId, studentId) => {
 	const link = await repository.findChildForParent(userId, studentId);
 	if (!link) throw new NotFoundError("Child not found for this parent");
-	return { ...link.student, profileImageUrl: await getFileUrl(link.student.profileImageUrl) };
+	return studentService.enrichCurrentClassTeacher(link.student);
 };
 const getPublishedChildResults = async (userId, studentId, query = {}) => {
 	const link = await repository.findChildForParent(userId, studentId);

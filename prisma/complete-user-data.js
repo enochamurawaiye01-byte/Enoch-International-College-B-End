@@ -11,7 +11,7 @@ const adapter = new PrismaPg({
 const prisma = new PrismaClient({ adapter });
 
 async function completeUserData() {
-  console.log("=== Enoch ERP Data Completion & Auto-Healing Script ===");
+  console.log("=== Mercy T International College ERP Data Completion & Auto-Healing Script ===");
   try {
     const defaultSchool = await prisma.school.findFirst();
     const defaultClass = await prisma.class.findFirst({ where: { isActive: true } });
@@ -44,7 +44,7 @@ async function completeUserData() {
       // 2. Profile auto-creation based on Role
       if (user.role === "STUDENT") {
         if (!user.student) {
-          const registrationNumber = await generateRegistrationNumber(prisma, user.fullName || "Student User");
+          const registrationNumber = await generateRegistrationNumber(prisma, user.fullName || "Student User", new Date(), user.schoolId || defaultSchool?.id);
           await prisma.student.create({
             data: {
               userId: user.id,
@@ -61,7 +61,7 @@ async function completeUserData() {
         }
       } else if (["TEACHER", "STAFF", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER", "BURSAR", "MANAGEMENT", "ADMIN", "SUPER_ADMIN"].includes(user.role)) {
         if (!user.staff) {
-          const staffNumber = `EIC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
+          const staffNumber = `MIC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
           await prisma.staff.create({
             data: {
               userId: user.id,

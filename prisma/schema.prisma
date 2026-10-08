@@ -556,6 +556,7 @@ model User {
 
   role   UserRole
   status UserStatus @default(ACTIVE)
+  hasCompletedFirstLogin Boolean @default(false)
 
   currentClass String?
   currentTerm  String?
@@ -724,6 +725,7 @@ model School {
 
   name      String
   shortName String?
+  registrationPrefix String @default("MIC")
   motto     String?
 
   email          String?
@@ -1277,6 +1279,12 @@ model Staff {
 
   @@index([departmentId])
   @@index([status])
+}
+
+model RegistrationNumberCounter {
+  scope     String   @id
+  value     Int      @default(0)
+  updatedAt DateTime @updatedAt
 }
 
 // ============================================================

@@ -22,9 +22,9 @@ async function runMailerDiagnostic() {
 
   const result = await sendEmail({
     to: testRecipient,
-    subject: "TEST EMAIL — Mercy T College ERP Diagnostic",
-    text: "This is an end-to-end diagnostic test email from Mercy T College School ERP SMTP system.",
-    html: "<div style='font-family:sans-serif; padding:16px; border:1px solid #D8D2C6; background:#FAF7F2; border-radius:4px;'><h2 style='color:#0A192F;'>Mercy T College SMTP Test</h2><p style='color:#111111;'>If you received this message, the SMTP Mailer delivery pipeline is fully functional!</p></div>"
+    subject: "TEST EMAIL — Mercy T International College ERP Diagnostic",
+    text: "This is an end-to-end diagnostic test email from Mercy T International College School ERP SMTP system.",
+    html: "<div style='font-family:sans-serif; padding:16px; border:1px solid #D8D2C6; background:#FAF7F2; border-radius:4px;'><h2 style='color:#0A192F;'>Mercy T International College SMTP Test</h2><p style='color:#111111;'>If you received this message, the SMTP Mailer delivery pipeline is fully functional!</p></div>"
   });
 
   console.log("SMTP message result:", JSON.stringify({

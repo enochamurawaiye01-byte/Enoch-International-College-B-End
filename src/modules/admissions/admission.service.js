@@ -7,6 +7,7 @@ const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./admission.repository");
 const { generateApplicationNumber } = require("./admission.utils");
 const { sendApprovalEmail, sendRejectionEmail, studentApplicationApproved } = require("../../config/mailer");
+const { requiresDepartment } = require("../../core/utils/class-academic-rules");
 
 const getById = async (id) => {
 	const admission = await repository.findById(id);
@@ -27,7 +28,7 @@ const validatePlacement = async (desiredClassId, desiredDepartmentId) => {
 	}
 	const schoolClass = await repository.findClass(desiredClassId);
 	if (!schoolClass || !schoolClass.isActive) throw new AppError("Active desired class not found.", 404, "CLASS_NOT_FOUND");
-	const isSeniorSecondary = schoolClass.classLevel.code.startsWith("SS");
+	const isSeniorSecondary = requiresDepartment(schoolClass.classLevel.code);
 	if (isSeniorSecondary && !desiredDepartmentId) throw new AppError("A department is required for senior secondary applicants.", 422, "STUDENT_DEPARTMENT_REQUIRED");
 	if (desiredDepartmentId && !(await prisma.department.findUnique({ where: { id: desiredDepartmentId } }))) throw new AppError("Department not found.", 404, "STUDENT_DEPARTMENT_NOT_FOUND");
 	if (!isSeniorSecondary && desiredDepartmentId) throw new AppError("Departments can only be selected for senior secondary classes.", 422, "STUDENT_DEPARTMENT_NOT_ALLOWED");
@@ -127,7 +128,7 @@ const convertToStudent = async (id, data = {}) => {
 		const departmentId = payload.desiredDepartmentId ?? lockedAdmission.desiredDepartmentId ?? null;
 		const schoolClass = await tx.class.findUnique({ where: { id: lockedClassId }, include: { classLevel: true } });
 		if (!schoolClass || !schoolClass.isActive) throw new AppError("Active desired class not found.", 404, "CLASS_NOT_FOUND");
-		const isSeniorSecondary = schoolClass.classLevel.code.startsWith("SS");
+		const isSeniorSecondary = requiresDepartment(schoolClass.classLevel.code);
 		if (isSeniorSecondary && !departmentId) throw new AppError("A department is required for senior secondary applicants.", 422, "STUDENT_DEPARTMENT_REQUIRED");
 		if (departmentId && !(await tx.department.findUnique({ where: { id: departmentId } }))) throw new AppError("Department not found.", 404, "STUDENT_DEPARTMENT_NOT_FOUND");
 		if (!isSeniorSecondary && departmentId) throw new AppError("Departments can only be selected for senior secondary classes.", 422, "STUDENT_DEPARTMENT_NOT_ALLOWED");
@@ -160,7 +161,7 @@ const convertToStudent = async (id, data = {}) => {
 			}
 		});
 
-		const registrationNumber = await generateRegistrationNumber(tx, fullName);
+		const registrationNumber = await generateRegistrationNumber(tx, fullName, new Date(), payload.schoolId);
 		const student = await tx.student.create({
 			data: {
 				userId: user.id,

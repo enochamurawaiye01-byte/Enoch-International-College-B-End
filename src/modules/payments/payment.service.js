@@ -4,7 +4,7 @@ const repository = require("./payment.repository");
 const { PAYMENT_ERRORS: ERRORS } = require("./payment.constants");
 
 const makeReceiptNumber = () => `RCT-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-const makePaystackReference = () => `EIC-${Date.now()}-${Math.floor(100000 + Math.random() * 900000)}`;
+const makePaystackReference = () => `MIC-${Date.now()}-${Math.floor(100000 + Math.random() * 900000)}`;
 
 const create = async (data) => {
 	const student = await repository.findStudent(data.studentId);

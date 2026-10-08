@@ -71,7 +71,7 @@ test("Mailgun API accepts transactional messages using configured sender and reg
     assert.equal(requests[0].options.headers.Authorization, `Basic ${Buffer.from("api:mailgun-test-key").toString("base64")}`);
     assert.equal(requests[0].options.headers["Content-Type"], "application/x-www-form-urlencoded");
     const fields = new URLSearchParams(requests[0].options.body);
-    assert.equal(fields.get("from"), "Mercy T College <noreply@mg.example.invalid>");
+    assert.equal(fields.get("from"), "Mercy T International College <noreply@mg.example.invalid>");
     assert.equal(fields.get("to"), "recipient@example.com");
     assert.equal(fields.get("subject"), "Test message");
     assert.equal(fields.get("text"), "Plain-text body");

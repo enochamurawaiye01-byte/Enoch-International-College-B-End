@@ -20,7 +20,8 @@ const findByRegistrationNumber = async (registrationNumber) =>
             user: {
                 select: userSelect,
             },
-            currentClass: true,
+            currentClass: { include: { classLevel: true } },
+            desiredDepartment: true,
         },
     });
 
@@ -87,6 +88,17 @@ const findTeacherClassIds = async (userId) => {
     ]);
     return [...new Set([...subjectAssignments, ...classAssignments].map((assignment) => assignment.classId))];
 };
+const findCurrentClassTeacher = async (classId, schoolId) => prisma.classTeacherAssignment.findFirst({
+    where: {
+        classId,
+        session: { isActive: true, ...(schoolId ? { schoolId } : {}) },
+    },
+    include: {
+        staff: { select: { id: true, firstName: true, lastName: true, user: { select: { fullName: true } } } },
+        session: { select: { id: true, name: true } },
+    },
+    orderBy: { createdAt: "desc" },
+});
 const isTeacherAssignedToClass = async (userId, classId) => (await findTeacherClassIds(userId)).includes(classId);
 const updateProfileImage = async (studentId, profileImageUrl) => prisma.student.update({
     where: { id: studentId },
@@ -103,6 +115,7 @@ module.exports = {
     findUserByEmail,
     findClassById,
     findTeacherClassIds,
+    findCurrentClassTeacher,
     isTeacherAssignedToClass,
     updateProfileImage,
 };

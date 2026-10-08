@@ -81,7 +81,7 @@ const assignClassTeacher = async (data, user) => {
         repository.findClassById(data.classId),
         repository.findSession(data.sessionId)
     ]);
-    if (!staff || staff.status !== "ACTIVE") throw new AppError(ERRORS.STAFF_NOT_ACTIVE, 409, "STAFF_NOT_ACTIVE");
+    if (!staff || staff.status !== "ACTIVE" || staff.user.status !== "ACTIVE") throw new AppError(ERRORS.STAFF_NOT_ACTIVE, 409, "STAFF_NOT_ACTIVE");
     if (!schoolClass || !schoolClass.isActive) throw new AppError(ERRORS.CLASS_NOT_FOUND, 404, "CLASS_NOT_FOUND");
     if (!session || !schoolClass.isActive) throw new AppError("Active class and academic session are required.", 404, "SESSION_OR_CLASS_NOT_FOUND");
     return repository.saveClassTeacherAssignment({ staffId: staff.id, classId: schoolClass.id, sessionId: session.id, assignedById: user.userId });

@@ -52,7 +52,7 @@ const createClass = async (data) => {
 // Get all classes
 const getAllClasses = async (user) => {
     const classIds = user?.role === "TEACHER" ? await classRepository.findTeacherClassIds(user.userId) : undefined;
-    return classRepository.findAllClasses(classIds);
+    return classRepository.findAllClasses(classIds, user?.schoolId);
 };
 
 const getClassLevels = () => classRepository.findAllClassLevels();
@@ -60,7 +60,7 @@ const getClassLevels = () => classRepository.findAllClassLevels();
 // Get one class
 const getClassById = async (id, user) => {
     const schoolClass =
-        await classRepository.findClassById(id);
+        await classRepository.findClassById(id, user?.schoolId);
 
     if (!schoolClass) {
         throw new AppError(
@@ -78,7 +78,7 @@ const getClassById = async (id, user) => {
 
 const getClassArms = async (id, user) => {
     const schoolClass = await getClassById(id, user);
-    return classRepository.findClassesByLevel(schoolClass.classLevelId);
+    return classRepository.findClassesByLevel(schoolClass.classLevelId, user?.schoolId);
 };
 
 // Update class

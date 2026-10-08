@@ -7,6 +7,7 @@ const roleService = require("../roles/role.service");
 const { hashNewPassword, normalizeQuery } = require("./user.utils");
 const { sendApprovalEmail, sendRejectionEmail, sendApprovalSms } = require("../../config/mailer");
 const generateRegistrationNumber = require("../../core/utils/generate-registration-number");
+const { requiresDepartment } = require("../../core/utils/class-academic-rules");
 
 const titleCaseFromEnum = (str) => {
   if (!str) return "";
@@ -145,7 +146,7 @@ const activateStudentApplication = async (target) => prisma.$transaction(async (
   });
   if (!schoolClass) throw new AppError("The selected class is no longer active.", 409, "STUDENT_CLASS_UNAVAILABLE");
 
-  const isSeniorSecondary = schoolClass.classLevel.code.startsWith("SS");
+  const isSeniorSecondary = requiresDepartment(schoolClass.classLevel.code);
   if (isSeniorSecondary && !student.desiredDepartmentId) throw new AppError("A department is required for senior secondary students.", 409, "STUDENT_DEPARTMENT_REQUIRED");
   if (student.desiredDepartmentId && !(await tx.department.findUnique({ where: { id: student.desiredDepartmentId } }))) {
     throw new AppError("The selected department no longer exists.", 409, "STUDENT_DEPARTMENT_UNAVAILABLE");
@@ -159,7 +160,7 @@ const activateStudentApplication = async (target) => prisma.$transaction(async (
   const term = session?.terms[0];
   if (!session || !term) throw new AppError("An active academic session and term are required before approval.", 409, "ACTIVE_ACADEMIC_TERM_REQUIRED");
 
-  const registrationNumber = student.registrationNumber || await generateRegistrationNumber(tx, target.fullName || "Student User");
+  const registrationNumber = student.registrationNumber || await generateRegistrationNumber(tx, target.fullName || "Student User", new Date(), target.schoolId);
   await tx.student.update({
     where: { id: student.id },
     data: {

@@ -32,7 +32,7 @@ test("activating an inactive teacher sends an employment letter through Mailgun"
 
   process.env.MAILGUN_API_KEY = "mailgun-test-key";
   process.env.MAILGUN_DOMAIN = "mg.example.invalid";
-  process.env.MAILGUN_FROM_EMAIL = "Mercy T College <noreply@mg.example.invalid>";
+  process.env.MAILGUN_FROM_EMAIL = "Mercy T International College <noreply@mg.example.invalid>";
   global.fetch = async (url, options) => {
     messages.push({ url, fields: new URLSearchParams(options.body) });
     return { status: 200, ok: true, json: async () => ({ id: "<test-message-id>", message: "Queued. Thank you." }) };
@@ -54,7 +54,7 @@ test("activating an inactive teacher sends an employment letter through Mailgun"
     assert.equal(messages.length, 1);
     assert.equal(messages[0].url, "https://api.mailgun.net/v3/mg.example.invalid/messages");
     assert.equal(messages[0].fields.get("to"), "daniel@school.invalid");
-    assert.equal(messages[0].fields.get("subject"), "Employment appointment letter | Mercy T College");
+    assert.equal(messages[0].fields.get("subject"), "Employment appointment letter | Mercy T International College");
     assert.match(messages[0].fields.get("text"), /Staff ID: MIC\/STF\/0123456789ABCDEF/);
     assert.match(messages[0].fields.get("text"), /Department: Science/);
     assert.equal(result.communication.email, true);

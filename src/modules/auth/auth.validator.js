@@ -87,14 +87,19 @@ const optionalText = (schema) => z.preprocess((value) => value === "" ? undefine
 
 const loginSchema = z
   .object({
-    email: emailSchema,
+    email: z.preprocess((value) => typeof value === "string" && !value.trim() ? undefined : value, emailSchema.optional()),
+    registrationNumber: optionalText(z.string().trim().min(2).max(64)),
 
     password: z
       .string({
         required_error: "Password is required",
       })
       .min(1, "Password is required"),
-  });
+  })
+  .refine(
+    (data) => Boolean(data.email || data.registrationNumber),
+    { message: "Email or registration number is required", path: ["email"] }
+  );
 
 const registerSchema = z
   .object({

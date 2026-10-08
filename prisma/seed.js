@@ -18,11 +18,12 @@ const seed = async () => {
         where: {
             id: "00000000-0000-0000-0000-000000000001",
         },
-        update: {},
+        update: { name: "Mercy T International College", shortName: "MIC", registrationPrefix: "MIC" },
         create: {
             id: "00000000-0000-0000-0000-000000000001",
-            name: "Enoch International College",
-            shortName: "EIC",
+            name: "Mercy T International College",
+            shortName: "MIC",
+            registrationPrefix: "MIC",
             motto: "Excellence in Education",
             country: "Nigeria",
         },

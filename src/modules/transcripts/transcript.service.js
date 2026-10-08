@@ -9,7 +9,7 @@ const getCsv = async (query) => {
     if (query.classId) where.currentClassId = query.classId;
     const students = await repository.findStudents(where);
     const lines = ["Student,Registration Number,Class,Subject,Exam,Session,Term,Score,Total Marks,Percentage,Status"];
-    for (const student of students) for (const result of student.results) lines.push([`${student.firstName} ${student.lastName}`, student.registrationNumber, student.currentClass?.name || "", result.exam.subject.name, result.exam.title, result.session.name, result.term.name, result.score, result.totalMarks, result.percentage, result.status].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","));
+    for (const student of students) for (const result of student.results) lines.push([`${student.firstName} ${student.lastName}`, student.registrationNumber, result.exam.class?.name || "", result.exam.subject.name, result.exam.title, result.session.name, result.term.name, result.score, result.totalMarks, result.percentage, result.status].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","));
     return lines.join("\r\n");
 };
 
@@ -21,7 +21,7 @@ const getStudentTranscript = async (studentId) => {
             currentClass: true,
             results: {
                 include: {
-                    exam: { include: { subject: true, class: true } },
+                    exam: { include: { subject: true, class: { include: { classLevel: true } } } },
                     session: true,
                     term: true,
                 },
@@ -31,6 +31,7 @@ const getStudentTranscript = async (studentId) => {
                 include: {
                     session: true,
                     term: true,
+                    class: { include: { classLevel: true } },
                     entries: { include: { subject: true } },
                 },
                 orderBy: { createdAt: "asc" },
@@ -63,6 +64,7 @@ const getStudentTranscript = async (studentId) => {
 
         resultsBySession[sessionKey][termKey].push({
             subject: result.exam?.subject?.name || "Subject",
+            class: result.exam?.class?.name || "N/A",
             examTitle: result.exam?.title,
             score: scoreNum,
             totalMarks: Number(result.totalMarks),

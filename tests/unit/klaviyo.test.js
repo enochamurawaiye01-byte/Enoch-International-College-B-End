@@ -63,7 +63,7 @@ test("Klaviyo Integration Unit Tests", async (t) => {
       assert.equal(event.properties.letter_type, "Teacher Employment Letter");
       assert.equal(event.properties.registration_number, "MIC/STF/2026/001");
       assert.equal(event.properties.department, "Science");
-      assert.equal(event.properties.school_name, "Mercy T College Nursery and Primary School");
+      assert.equal(event.properties.school_name, "Mercy T International College");
     } finally {
       global.fetch = originalFetch;
       if (originalPrivateKey === undefined) delete process.env.KLAVIYO_PRIVATE_API_KEY;

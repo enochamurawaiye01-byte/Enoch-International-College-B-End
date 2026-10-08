@@ -1,7 +1,7 @@
 {
   "name": "college",
   "version": "1.0.0",
-  "description": "Enoch International College School ERP",
+  "description": "Mercy T International College School ERP",
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",

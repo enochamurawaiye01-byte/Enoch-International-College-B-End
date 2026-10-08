@@ -16,7 +16,7 @@ test("approved students receive congratulations and teachers receive an employme
   const requests = [];
   process.env.MAILGUN_API_KEY = "mailgun-test-key";
   process.env.MAILGUN_DOMAIN = "mg.example.invalid";
-  process.env.MAILGUN_FROM_EMAIL = "Mercy T College <noreply@mg.example.invalid>";
+  process.env.MAILGUN_FROM_EMAIL = "Mercy T International College <noreply@mg.example.invalid>";
   global.fetch = async (url, options) => {
     requests.push({ url, fields: new URLSearchParams(options.body) });
     return { status: 200, ok: true, json: async () => ({ id: "<test-message-id>", message: "Queued. Thank you." }) };
@@ -57,12 +57,13 @@ test("approved students receive congratulations and teachers receive an employme
     assert.equal(requests.length, 2);
     assert.equal(requests[0].url, "https://api.mailgun.net/v3/mg.example.invalid/messages");
     assert.equal(requests[0].fields.get("to"), "student-1@school.invalid");
-    assert.equal(requests[0].fields.get("subject"), "Congratulations on your admission | Mercy T College");
+    assert.equal(requests[0].fields.get("subject"), "Congratulations on your admission | Mercy T International College");
     assert.match(requests[0].fields.get("text"), /Registration number: MIC\/2026\/0123456789ABCDEF/);
     assert.match(requests[0].fields.get("text"), /Class \/ level: Primary 4/);
     assert.match(requests[0].fields.get("text"), /Academic session: 2026\/2027/);
+    assert.match(requests[0].fields.get("text"), /first sign-in.*registration number and password for future sign-ins/);
     assert.equal(requests[1].fields.get("to"), "teacher-1@school.invalid");
-    assert.equal(requests[1].fields.get("subject"), "Employment appointment letter | Mercy T College");
+    assert.equal(requests[1].fields.get("subject"), "Employment appointment letter | Mercy T International College");
     assert.match(requests[1].fields.get("text"), /Staff ID: MIC\/STF\/0123456789ABCDEF/);
     assert.match(requests[1].fields.get("text"), /Department: Science/);
   } finally {

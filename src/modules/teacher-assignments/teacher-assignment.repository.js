@@ -1,6 +1,9 @@
 const { prisma } = require("../../config/database");
 
-const findStaffById = (id) => prisma.staff.findUnique({ where: { id } });
+const findStaffById = (id) => prisma.staff.findUnique({
+	where: { id },
+	include: { user: { select: { status: true, role: true } } },
+});
 const findStaffByUserId = (userId) => prisma.staff.findUnique({ where: { userId }, select: { id: true } });
 const findClassById = (id) => prisma.class.findUnique({ where: { id } });
 const findSession = (id) => prisma.academicSession.findUnique({ where: { id } });

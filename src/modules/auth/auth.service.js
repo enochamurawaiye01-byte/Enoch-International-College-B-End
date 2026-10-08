@@ -15,6 +15,7 @@ const AppError = require("../../core/errors/AppError");
 const studentService = require("../students/student.service");
 const jwt = require("jsonwebtoken");
 const { sendPasswordResetEmail } = require("../../config/mailer");
+const { requiresDepartment } = require("../../core/utils/class-academic-rules");
 
 const getPublicRegistrationOptions = async () => {
     const [classes, departments] = await Promise.all([
@@ -25,7 +26,13 @@ const getPublicRegistrationOptions = async () => {
         }),
         prisma.department.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
     ]);
-    return { classes, departments };
+    return {
+        classes: classes.map((schoolClass) => ({
+            ...schoolClass,
+            requiresDepartment: requiresDepartment(schoolClass.classLevel.code),
+        })),
+        departments,
+    };
 };
 
 const sanitizeUser = (user) => {
@@ -93,7 +100,7 @@ const register = async (data) => {
                 include: { classLevel: true },
             });
             if (!selectedClass) throw new AuthError("Select an active class.", 422, "STUDENT_CLASS_REQUIRED");
-            const isSeniorSecondary = selectedClass.classLevel.code.startsWith("SS");
+            const isSeniorSecondary = requiresDepartment(selectedClass.classLevel.code);
             if (isSeniorSecondary && !desiredDepartmentId) throw new AuthError("Select a department for senior secondary students.", 422, "STUDENT_DEPARTMENT_REQUIRED");
             if (desiredDepartmentId && !(await tx.department.findUnique({ where: { id: desiredDepartmentId } }))) {
                 throw new AuthError("The selected department was not found.", 422, "STUDENT_DEPARTMENT_NOT_FOUND");
@@ -181,12 +188,12 @@ const register = async (data) => {
     };
 };
 
-const login = async ({ email, password }) => {
-    const normalizedEmail = email.toLowerCase().trim();
-
-    const user = await repository.findUserWithAuthDataByEmail(
-        normalizedEmail
-    );
+const login = async ({ email, registrationNumber, password }) => {
+    const user = registrationNumber
+        ? await repository.findStudentWithAuthDataByRegistrationNumber(registrationNumber.trim().toUpperCase())
+        : email
+            ? await repository.findUserWithAuthDataByEmail(email.toLowerCase().trim())
+            : null;
 
     if (!user) {
         throw new AuthError(
@@ -220,6 +227,14 @@ const login = async ({ email, password }) => {
         );
     }
 
+    if (registrationNumber && user.role !== "STUDENT") {
+        throw new AuthError("Invalid registration number or password", 401, AUTH.ERROR_CODES.INVALID_CREDENTIALS);
+    }
+
+    if (user.role === "STUDENT" && (!user.student || ["INACTIVE", "WITHDRAWN"].includes(user.student.status))) {
+        throw new AuthError("Your student account is inactive or withdrawn", 403, AUTH.ERROR_CODES.ACCOUNT_INACTIVE);
+    }
+
     const passwordMatches = await comparePassword(
         password,
         user.passwordHash
@@ -230,6 +245,14 @@ const login = async ({ email, password }) => {
             "Invalid email or password",
             401,
             AUTH.ERROR_CODES.INVALID_CREDENTIALS
+        );
+    }
+
+    if (user.role === "STUDENT" && user.hasCompletedFirstLogin && !registrationNumber) {
+        throw new AuthError(
+            "Use your student registration number to sign in.",
+            400,
+            "STUDENT_REGISTRATION_LOGIN_REQUIRED"
         );
     }
 
@@ -259,6 +282,10 @@ const login = async ({ email, password }) => {
     });
 
     await repository.updateLastLogin(user.id);
+    if (user.role === "STUDENT" && !user.hasCompletedFirstLogin) {
+        await repository.markFirstLoginComplete(user.id);
+        user.hasCompletedFirstLogin = true;
+    }
 
     return {
         user: sanitizeUser(user),
@@ -531,4 +558,3 @@ module.exports = {
     changePassword,
     verifyToken,
 };
-

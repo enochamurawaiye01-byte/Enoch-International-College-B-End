@@ -5,6 +5,24 @@ const { prisma } = require("../../config/database");
 // User Queries
 // ======================================================
 
+const authUserSelect = {
+    id: true,
+    fullName: true,
+    email: true,
+    phoneNumber: true,
+    passwordHash: true,
+    schoolId: true,
+    role: true,
+    status: true,
+    hasCompletedFirstLogin: true,
+    lastLoginAt: true,
+    createdAt: true,
+    updatedAt: true,
+    student: true,
+    staff: true,
+    parent: true,
+};
+
 const findUserByEmail = async (email) => {
     return prisma.user.findUnique({
         where: {
@@ -26,23 +44,21 @@ const findUserWithAuthDataByEmail = async (email) => {
         where: {
             email: email.toLowerCase(),
         },
-     select: {
-    id: true,
-    fullName: true,
-    email: true,
-    phoneNumber: true,
-    passwordHash: true,
-    schoolId: true,
-    role: true,
-    status: true,
-    lastLoginAt: true,
-    createdAt: true,
-    updatedAt: true,
-    student: true,
-    staff: true,
-    parent: true,
-},
+        select: authUserSelect,
     });
+};
+
+const findStudentWithAuthDataByRegistrationNumber = async (registrationNumber) => {
+    const student = await prisma.student.findUnique({
+        where: { registrationNumber },
+        select: {
+            id: true,
+            registrationNumber: true,
+            status: true,
+            user: { select: authUserSelect },
+        },
+    });
+    return student?.user ? { ...student.user, student: { id: student.id, status: student.status, registrationNumber: student.registrationNumber } } : null;
 };
 
 // ======================================================
@@ -67,6 +83,13 @@ const updateLastLogin = async (userId) => {
         data: {
             lastLoginAt: new Date(),
         },
+    });
+};
+
+const markFirstLoginComplete = async (userId) => {
+    await prisma.user.update({
+        where: { id: userId },
+        data: { hasCompletedFirstLogin: true },
     });
 };
 
@@ -136,8 +159,10 @@ module.exports = {
     findUserByEmail,
     findUserById,
     findUserWithAuthDataByEmail,
+    findStudentWithAuthDataByRegistrationNumber,
     createUser,
     updateLastLogin,
+    markFirstLoginComplete,
     createSession,
     findSessionByToken,
     deleteSessionByToken,

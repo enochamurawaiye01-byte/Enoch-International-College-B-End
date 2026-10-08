@@ -3,6 +3,7 @@ require("dotenv").config();
 const { PrismaClient } = require("@prisma/client");
 const { PrismaPg } = require("@prisma/adapter-pg");
 const { hashPassword } = require("../src/core/utils/hash");
+const generateRegistrationNumber = require("../src/core/utils/generate-registration-number");
 
 const prisma = new PrismaClient({
     adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -46,8 +47,8 @@ async function upsertUser(email, fullName, role) {
 async function main() {
     const school = await prisma.school.upsert({
         where: { id: SCHOOL_ID },
-        update: {},
-        create: { id: SCHOOL_ID, name: "Enoch International College", shortName: "EIC", motto: "Excellence in Education", country: "Nigeria" },
+        update: { name: "Mercy T International College", shortName: "MIC", registrationPrefix: "MIC" },
+        create: { id: SCHOOL_ID, name: "Mercy T International College", shortName: "MIC", registrationPrefix: "MIC", motto: "Excellence in Education", country: "Nigeria" },
     });
 
     const science = await prisma.department.upsert({ where: { name: "Science" }, update: {}, create: { name: "Science", description: "Science department" } });
@@ -103,8 +104,8 @@ async function main() {
         const user = await upsertUser(email, `${firstName} ${lastName}`, "TEACHER");
         const staff = await prisma.staff.upsert({
             where: { userId: user.id },
-            update: { firstName, lastName, staffNumber: `EIC-T-${String(index + 1).padStart(3, "0")}`, jobTitle: "Teacher", status: "ACTIVE", departmentId: science.id, employmentType: "FULL_TIME" },
-            create: { userId: user.id, firstName, lastName, staffNumber: `EIC-T-${String(index + 1).padStart(3, "0")}`, jobTitle: "Teacher", status: "ACTIVE", departmentId: science.id, employmentType: "FULL_TIME", employmentDate: new Date("2026-09-01T00:00:00.000Z") },
+            update: { firstName, lastName, staffNumber: `MIC-T-${String(index + 1).padStart(3, "0")}`, jobTitle: "Teacher", status: "ACTIVE", departmentId: science.id, employmentType: "FULL_TIME" },
+            create: { userId: user.id, firstName, lastName, staffNumber: `MIC-T-${String(index + 1).padStart(3, "0")}`, jobTitle: "Teacher", status: "ACTIVE", departmentId: science.id, employmentType: "FULL_TIME", employmentDate: new Date("2026-09-01T00:00:00.000Z") },
         });
         teacherRecords.push({ staff, subject: subjects[subjectName] });
     }
@@ -114,11 +115,24 @@ async function main() {
         const email = `student${index + 1}@enochcollege.test`;
         const user = await upsertUser(email, `${firstName} ${lastName}`, "STUDENT");
         const className = classDefinitions[index % classDefinitions.length];
-        const student = await prisma.student.upsert({
-            where: { userId: user.id },
-            update: { firstName, lastName, currentClassId: classes[className].id, status: "ACTIVE" },
-            create: { userId: user.id, firstName, lastName, registrationNumber: `EIC-DEMO-${String(index + 1).padStart(3, "0")}`, currentClassId: classes[className].id, currentSessionId: session.id, admissionDate: new Date("2026-09-01T00:00:00.000Z"), status: "ACTIVE" },
-        });
+        const existingStudent = await prisma.student.findUnique({ where: { userId: user.id } });
+        const student = existingStudent
+            ? await prisma.student.update({
+                where: { id: existingStudent.id },
+                data: { firstName, lastName, currentClassId: classes[className].id, status: "ACTIVE" },
+            })
+            : await prisma.student.create({
+                data: {
+                    userId: user.id,
+                    firstName,
+                    lastName,
+                    registrationNumber: await generateRegistrationNumber(prisma, `${firstName} ${lastName}`, new Date("2026-09-01T00:00:00.000Z"), school.id),
+                    currentClassId: classes[className].id,
+                    currentSessionId: session.id,
+                    admissionDate: new Date("2026-09-01T00:00:00.000Z"),
+                    status: "ACTIVE",
+                },
+            });
         await prisma.enrollment.upsert({ where: { studentId_sessionId_termId: { studentId: student.id, sessionId: session.id, termId: term.id } }, update: { classId: classes[className].id, status: "ACTIVE" }, create: { studentId: student.id, sessionId: session.id, termId: term.id, classId: classes[className].id, status: "ACTIVE" } });
     }
 

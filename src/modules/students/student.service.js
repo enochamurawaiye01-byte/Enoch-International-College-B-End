@@ -6,6 +6,7 @@ const generateRegistrationNumber = require("../../core/utils/generate-registrati
 const AppError = require("../../core/errors/AppError");
 const { uploadFile, getFileUrl, removeStoredFile } = require("../../config/storage");
 const crypto = require("node:crypto");
+const { requiresDepartment } = require("../../core/utils/class-academic-rules");
 
 const getStudentByUserId = async (userId) => {
     const student = await repository.findByUserId(userId);
@@ -16,7 +17,20 @@ const getStudentByUserId = async (userId) => {
         );
     }
 
-    return { ...student, profileImageUrl: await getFileUrl(student.profileImageUrl) };
+    return enrichCurrentClassTeacher(student);
+};
+
+const enrichCurrentClassTeacher = async (student) => {
+    if (!student.currentClassId || !student.currentClass) return { ...student, profileImageUrl: await getFileUrl(student.profileImageUrl) };
+    const assignment = await repository.findCurrentClassTeacher(student.currentClassId, student.user?.schoolId);
+    const classTeacher = assignment
+        ? { id: assignment.staff.id, fullName: assignment.staff.user.fullName, session: assignment.session }
+        : null;
+    return {
+        ...student,
+        currentClass: { ...student.currentClass, classTeacher },
+        profileImageUrl: await getFileUrl(student.profileImageUrl),
+    };
 };
 
 const getStudentByRegistrationNumber = async (registrationNumber, actor) => {
@@ -39,7 +53,7 @@ const getStudentByRegistrationNumber = async (registrationNumber, actor) => {
         throw new AppError("You can only access your own student profile.", 403, "STUDENT_ACCESS_DENIED");
     }
 
-    return { ...student, profileImageUrl: await getFileUrl(student.profileImageUrl) };
+    return enrichCurrentClassTeacher(student);
 };
 
 const createStudent = async (data, schoolId) => {
@@ -48,7 +62,7 @@ const createStudent = async (data, schoolId) => {
     return prisma.$transaction(async (tx) => {
         const schoolClass = await tx.class.findFirst({ where: { id: data.currentClassId, isActive: true }, include: { classLevel: true } });
         if (!schoolClass) throw new AppError("Active class not found.", 404, "CLASS_NOT_FOUND");
-        const isSeniorSecondary = schoolClass.classLevel.code.startsWith("SS");
+        const isSeniorSecondary = requiresDepartment(schoolClass.classLevel.code);
         if (isSeniorSecondary && !data.desiredDepartmentId) throw new AppError("A department is required for senior secondary students.", 422, "STUDENT_DEPARTMENT_REQUIRED");
         if (data.desiredDepartmentId && !(await tx.department.findUnique({ where: { id: data.desiredDepartmentId } }))) {
             throw new AppError("The selected department was not found.", 404, "STUDENT_DEPARTMENT_NOT_FOUND");
@@ -67,7 +81,7 @@ const createStudent = async (data, schoolId) => {
         if (status === "ACTIVE" && (!session || !term)) throw new AppError("An active academic session and term are required before student activation.", 409, "ACTIVE_ACADEMIC_TERM_REQUIRED");
 
         const user = await tx.user.create({ data: { schoolId: schoolId || null, fullName, email: data.email.toLowerCase(), phoneNumber: data.phoneNumber || null, passwordHash, role: "STUDENT", status: status === "ACTIVE" ? "ACTIVE" : "INACTIVE" } });
-        const registrationNumber = status === "ACTIVE" ? await generateRegistrationNumber(tx, fullName) : null;
+        const registrationNumber = status === "ACTIVE" ? await generateRegistrationNumber(tx, fullName, new Date(), schoolId) : null;
         const student = await tx.student.create({ data: {
             userId: user.id,
             registrationNumber,
@@ -123,7 +137,7 @@ const getStudentById = async (id, user) => {
     if (user?.role === "TEACHER" && (!student.currentClassId || !(await repository.isTeacherAssignedToClass(user.userId, student.currentClassId)))) {
         throw new AppError("You are not assigned to this student's class.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
     }
-    return { ...student, profileImageUrl: await getFileUrl(student.profileImageUrl) };
+    return enrichCurrentClassTeacher(student);
 };
 const updateStudent = async (id, data) => {
     const student = await getStudentById(id);
@@ -185,4 +199,5 @@ module.exports = {
     updateStudent,
     updateProfileImage,
     removeProfileImage,
+    enrichCurrentClassTeacher,
 };

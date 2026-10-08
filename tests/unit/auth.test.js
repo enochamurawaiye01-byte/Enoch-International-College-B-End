@@ -3,7 +3,9 @@ const { describe, it } = require("node:test");
 const { generateAccessToken, generateRefreshToken, verifyAccessToken, verifyRefreshToken } = require("../../src/core/utils/jwt");
 const { calculateGrade } = require("../../src/modules/results/result.service");
 const { registerSchema } = require("../../src/modules/auth/auth.validator");
+const { loginSchema } = require("../../src/modules/auth/auth.validator");
 const generateRegistrationNumber = require("../../src/core/utils/generate-registration-number");
+const { requiresDepartment } = require("../../src/core/utils/class-academic-rules");
 
 describe("Auth & Token Verification Unit Tests", () => {
 
@@ -70,11 +72,13 @@ describe("Registration application validation", () => {
 });
 
 describe("Student registration number generation", () => {
-    it("uses a year-scoped unique identifier and retries existing numbers", async () => {
+    it("uses a sequential MIC identifier and skips an existing number", async () => {
         const issued = new Set();
-        const existingNumber = `MIC/2026/${"A".repeat(16)}`;
+        const existingNumber = "MIC/2026/000001";
         issued.add(existingNumber);
+        let nextValue = 0;
         const client = {
+            $queryRaw: async () => [{ value: ++nextValue }],
             student: {
                 findUnique: async ({ where }) => {
                     return issued.has(where.registrationNumber) ? { id: "existing" } : null;
@@ -88,8 +92,36 @@ describe("Student registration number generation", () => {
             issued.add(registrationNumber);
         }
 
-        assert.ok(generated.every((registrationNumber) => /^MIC\/2026\/[A-F0-9]{16}$/.test(registrationNumber)));
+        assert.ok(generated.every((registrationNumber) => /^MIC\/2026\/\d{6}$/.test(registrationNumber)));
         assert.equal(new Set(generated).size, 100);
         assert.ok(!generated.includes(existingNumber));
+        assert.equal(generated[0], "MIC/2026/000002");
+        assert.equal(generated[1], "MIC/2026/000003");
+    });
+
+    it("accepts registration number login and requires one identifier", () => {
+        assert.equal(loginSchema.safeParse({ registrationNumber: "MIC/2026/000001", password: "secret" }).success, true);
+        assert.equal(loginSchema.safeParse({ email: "student@example.com", password: "secret" }).success, true);
+        assert.equal(loginSchema.safeParse({ password: "secret" }).success, false);
+    });
+
+    it("requires a department only for senior-secondary class levels", () => {
+        assert.equal(requiresDepartment("JSS2"), false);
+        assert.equal(requiresDepartment("SS2"), true);
+        assert.equal(requiresDepartment(""), false);
+    });
+
+    it("generates unique numbers under concurrent requests", async () => {
+        let nextValue = 0;
+        const client = {
+            $queryRaw: async () => [{ value: ++nextValue }],
+            student: { findUnique: async () => null },
+        };
+        const numbers = await Promise.all(Array.from({ length: 100 }, () =>
+            generateRegistrationNumber(client, "Jordan Adebayo", new Date("2026-06-01T00:00:00Z"))
+        ));
+
+        assert.equal(new Set(numbers).size, 100);
+        assert.deepEqual(numbers.slice(0, 3), ["MIC/2026/000001", "MIC/2026/000002", "MIC/2026/000003"]);
     });
 });
