@@ -1259,6 +1259,7 @@ model Staff {
 
   employmentDate DateTime?
   qualification  String?
+  applicationLetterUrl String?
 
   address String?
 

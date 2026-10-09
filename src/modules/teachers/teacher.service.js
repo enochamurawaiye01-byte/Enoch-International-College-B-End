@@ -20,6 +20,7 @@ const attachAssignmentPeriods = async (assignments = []) => {
 const withSignedProfile = async (teacher) => teacher ? {
  ...teacher,
  profileImageUrl: await getFileUrl(teacher.profileImageUrl),
+ applicationLetterUrl: await getFileUrl(teacher.applicationLetterUrl),
  teacherAssignments: await attachAssignmentPeriods(teacher.teacherAssignments),
 } : teacher;
 const getAll = async () => Promise.all((await repository.findAll()).map(withSignedProfile));

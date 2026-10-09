@@ -4,6 +4,7 @@ const controller = require("./auth.controller");
 const validate = require("../../core/middleware/validation.middleware");
 const authenticate = require("../../core/middleware/auth.middleware");
 const { authLimiter } = require("../../core/middleware/rate-limit.middleware");
+const { uploadApplicationLetter, validateApplicationLetter } = require("../../core/middleware/application-letter.middleware");
 
 const {
     loginSchema,
@@ -20,6 +21,8 @@ router.get("/registration-options", controller.getRegistrationOptions);
 router.post(
     "/register",
     authLimiter,
+    uploadApplicationLetter,
+    validateApplicationLetter,
     validate(registerSchema),
     controller.register
 );
@@ -71,4 +74,3 @@ router.patch(
 );
 
 module.exports = router;
-

@@ -43,7 +43,7 @@ const sanitizeUser = (user) => {
     return safeUser;
 };
 
-const register = async (data) => {
+const register = async (data, applicationLetterUrl = null) => {
     const {
         firstName,
         middleName,
@@ -69,6 +69,12 @@ const register = async (data) => {
 
     const normalizedEmail = email.toLowerCase().trim();
     if (!["STUDENT", "TEACHER", "PARENT"].includes(role)) throw new AuthError("Only student, teacher and parent applications are accepted here", 403, "REGISTRATION_ROLE_NOT_ALLOWED");
+    if (role === "TEACHER" && !applicationLetterUrl) {
+        throw new AuthError("An application letter is required for teacher registration.", 422, "TEACHER_APPLICATION_LETTER_REQUIRED");
+    }
+    if (role !== "TEACHER" && applicationLetterUrl) {
+        throw new AuthError("An application letter can only be submitted with a teacher application.", 422, "APPLICATION_LETTER_ROLE_INVALID");
+    }
 
     const existingUser = await repository.findUserByEmail(normalizedEmail);
 
@@ -160,6 +166,7 @@ const register = async (data) => {
                 lastName,
                 jobTitle: jobTitle || "Teacher",
                 qualification: qualification || null,
+                applicationLetterUrl,
                 dateOfBirth: dateOfBirth || null,
                 gender: gender || null,
                 address: address || null,
@@ -167,6 +174,21 @@ const register = async (data) => {
                 employmentType: "FULL_TIME",
             },
         }) : null;
+
+        const administrators = await tx.user.findMany({
+            where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, status: "ACTIVE" },
+            select: { id: true },
+        });
+        if (administrators.length) {
+            await tx.notification.createMany({
+                data: administrators.map(({ id }) => ({
+                    userId: id,
+                    type: "SYSTEM",
+                    title: "New application received",
+                    message: `${fullName} submitted a ${role.toLowerCase()} application for approval.`,
+                })),
+            });
+        }
 
         return {
             user,
@@ -176,13 +198,10 @@ const register = async (data) => {
         };
     });
 
-    const administrators = await prisma.user.findMany({ where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, status: "ACTIVE" }, select: { id: true } });
-    if (administrators.length) await prisma.notification.createMany({ data: administrators.map(({ id }) => ({ userId: id, type: "SYSTEM", title: "New application received", message: `${fullName} submitted a ${role.toLowerCase()} application for approval.` })) });
-
     return {
         user: sanitizeUser(result.user),
         student: result.student,
-        staff: result.staff,
+        staff: result.staff ? (({ applicationLetterUrl: _applicationLetterUrl, ...staff }) => staff)(result.staff) : result.staff,
         parent: result.parent,
         pendingApproval: true,
     };
