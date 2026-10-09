@@ -21,6 +21,7 @@ const isTrustedPushEndpoint = (value) => {
 
 const pushSubscriptionSchema = z.object({
 	endpoint: z.string().url().max(2048).refine(isTrustedPushEndpoint, "Unsupported push notification service endpoint."),
+	expirationTime: z.number().nullable().optional(),
 	keys: z.object({
 		p256dh: z.string().min(1).max(256),
 		auth: z.string().min(1).max(256),
