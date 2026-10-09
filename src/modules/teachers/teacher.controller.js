@@ -1,7 +1,8 @@
 const service = require("./teacher.service");
+const { canViewTeacherApplications } = require("./teacher.constants");
 const create = async (req, res, next) => { try { return res.status(201).json({ success: true, data: await service.create(req.body, req.user.schoolId) }); } catch (error) { next(error); } };
-const getAll = async (req, res, next) => { try { return res.json({ success: true, data: await service.getAll() }); } catch (error) { next(error); } };
-const getById = async (req, res, next) => { try { return res.json({ success: true, data: await service.getById(req.params.id) }); } catch (error) { next(error); } };
+const getAll = async (req, res, next) => { try { return res.json({ success: true, data: await service.getAll({ includeApplicationLetters: canViewTeacherApplications(req.user.role) }) }); } catch (error) { next(error); } };
+const getById = async (req, res, next) => { try { return res.json({ success: true, data: await service.getById(req.params.id, { includeApplicationLetter: canViewTeacherApplications(req.user.role) }) }); } catch (error) { next(error); } };
 const getCurrent = async (req, res, next) => { try { return res.json({ success: true, data: await service.getCurrent(req.user.userId) }); } catch (error) { next(error); } };
 const update = async (req, res, next) => { try { return res.json({ success: true, data: await service.update(req.params.id, req.body) }); } catch (error) { next(error); } };
 const changeStatus = async (req, res, next) => { try { return res.json({ success: true, data: await service.changeStatus(req.params.id, req.body.status) }); } catch (error) { next(error); } };

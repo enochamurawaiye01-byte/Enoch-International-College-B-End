@@ -17,14 +17,21 @@ const attachAssignmentPeriods = async (assignments = []) => {
  const termById = new Map(terms.map((item) => [item.id, item]));
  return assignments.map((item) => ({ ...item, session: sessionById.get(item.sessionId) || null, term: termById.get(item.termId) || null }));
 };
-const withSignedProfile = async (teacher) => teacher ? {
- ...teacher,
- profileImageUrl: await getFileUrl(teacher.profileImageUrl),
- applicationLetterUrl: await getFileUrl(teacher.applicationLetterUrl),
- teacherAssignments: await attachAssignmentPeriods(teacher.teacherAssignments),
-} : teacher;
-const getAll = async () => Promise.all((await repository.findAll()).map(withSignedProfile));
-const getById = async (id) => { const teacher = await repository.findById(id); if (!teacher) throw new NotFoundError("Teacher not found"); return withSignedProfile(teacher); };
+const withSignedProfile = async (teacher, includeApplicationLetter = false) => {
+ if (!teacher) return teacher;
+ const { applicationLetterUrl, ...profile } = teacher;
+ const result = {
+  ...profile,
+  profileImageUrl: await getFileUrl(teacher.profileImageUrl),
+  teacherAssignments: await attachAssignmentPeriods(teacher.teacherAssignments),
+ };
+ if (includeApplicationLetter && applicationLetterUrl) result.applicationLetterUrl = await getFileUrl(applicationLetterUrl);
+ return result;
+};
+const getAll = async ({ includeApplicationLetters = false } = {}) => Promise.all(
+ (await repository.findAll()).map((teacher) => withSignedProfile(teacher, includeApplicationLetters))
+);
+const getById = async (id, { includeApplicationLetter = false } = {}) => { const teacher = await repository.findById(id); if (!teacher) throw new NotFoundError("Teacher not found"); return withSignedProfile(teacher, includeApplicationLetter); };
 const getCurrent = async (userId) => { const teacher = await repository.findByUserId(userId); if (!teacher) throw new NotFoundError("Teacher profile not found"); return withSignedProfile(teacher); };
 const create = (data, schoolId) => staffService.create(data, schoolId, "TEACHER");
 const update = (id, data) => staffService.update(id, data);
