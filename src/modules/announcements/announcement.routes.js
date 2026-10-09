@@ -12,4 +12,5 @@ router.get("/", controller.list);
 router.get("/:id", controller.getById);
 router.patch("/:id", validate(updateAnnouncementSchema), controller.update);
 router.patch("/:id/publication", validate(publicationSchema), controller.publish);
+router.delete("/:id", controller.remove);
 module.exports = router;

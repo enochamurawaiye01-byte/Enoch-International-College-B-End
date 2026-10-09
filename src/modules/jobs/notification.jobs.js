@@ -1,5 +1,5 @@
-const { prisma } = require("../../config/database");
+const announcementService = require("../announcements/announcement.service");
 
-const publishScheduledAnnouncements = () => prisma.announcement.updateMany({ where: { published: false, publishAt: { lte: new Date() } }, data: { published: true } });
+const publishScheduledAnnouncements = () => announcementService.publishScheduled();
 
 module.exports = { publishScheduledAnnouncements };

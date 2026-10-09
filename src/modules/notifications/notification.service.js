@@ -1,8 +1,21 @@
 const AppError = require("../../core/errors/AppError");
 const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./notification.repository");
+const pushService = require("./push.service");
 const { isAdmin } = require("./notification.utils");
-const create = async (data, user) => { if (!isAdmin(user.role)) throw new AppError("Only administrators can create system notifications.", 403, "NOTIFICATION_ACCESS_DENIED"); return repository.create(data); };
+const create = async (data, user) => {
+	if (!isAdmin(user.role)) throw new AppError("Only administrators can create system notifications.", 403, "NOTIFICATION_ACCESS_DENIED");
+	const notification = await repository.create(data);
+	try {
+		await pushService.sendToUsers([notification.userId], {
+			title: notification.title,
+			body: notification.message,
+		});
+	} catch (error) {
+		console.error(`[Notification push failed] notificationId=${notification.id} message=${error.message}`);
+	}
+	return notification;
+};
 const MANAGEMENT_ROLES = new Set([
 	"MANAGEMENT", "GOVERNING_BOARD", "PRINCIPAL", "VICE_PRINCIPAL", "VICE_PRINCIPAL_ACADEMICS",
 	"VICE_PRINCIPAL_ADMIN", "HEAD_TEACHER", "DEPUTY_HEAD_TEACHER", "ACADEMIC_COORDINATOR",

@@ -1,5 +1,6 @@
 
 const { prisma } = require("../../config/database");
+const pushService = require("../notifications/push.service");
 const crypto = require("node:crypto");
 const AUTH = require("./auth.constants");
 const repository = require("./auth.repository");
@@ -184,8 +185,8 @@ const register = async (data, applicationLetterUrl = null) => {
                 data: administrators.map(({ id }) => ({
                     userId: id,
                     type: "SYSTEM",
-                    title: "New application received",
-                    message: `${fullName} submitted a ${role.toLowerCase()} application for approval.`,
+                    title: `New ${role.toLowerCase()} application`,
+                    message: `${fullName} submitted a ${role.toLowerCase()} application. Review the applicant's details and supporting information in the admissions workspace.`,
                 })),
             });
         }
@@ -195,8 +196,19 @@ const register = async (data, applicationLetterUrl = null) => {
             student,
             staff,
             parent,
+            administratorIds: administrators.map(({ id }) => id),
         };
     });
+
+    try {
+        await pushService.sendToUsers(result.administratorIds, {
+            title: `New ${role.toLowerCase()} application`,
+            body: `${fullName} submitted a ${role.toLowerCase()} application. Review the applicant's details in the admissions workspace.`,
+            url: "/pages/admin/applicants.html",
+        });
+    } catch (error) {
+        console.error(`[Application notification push failed] role=${role} message=${error.message}`);
+    }
 
     return {
         user: sanitizeUser(result.user),

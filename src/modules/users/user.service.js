@@ -8,6 +8,7 @@ const { hashNewPassword, normalizeQuery } = require("./user.utils");
 const { sendApprovalEmail, sendRejectionEmail, sendApprovalSms } = require("../../config/mailer");
 const generateRegistrationNumber = require("../../core/utils/generate-registration-number");
 const { requiresDepartment } = require("../../core/utils/class-academic-rules");
+const pushService = require("../notifications/push.service");
 
 const titleCaseFromEnum = (str) => {
   if (!str) return "";
@@ -276,7 +277,7 @@ const changeStatus = async (id, status, actor) => {
 
   if (status === "ACTIVE" && target.status !== "ACTIVE") {
     try {
-      await prisma.notification.create({
+      const notification = await prisma.notification.create({
         data: {
           userId: target.id,
           type: "SYSTEM",
@@ -284,6 +285,7 @@ const changeStatus = async (id, status, actor) => {
           message: `Your application has been approved.${assignedRegNumber ? ` Registration number: ${assignedRegNumber}.` : " You can now sign in."}`
         }
       });
+      await pushService.sendToUsers([target.id], { title: notification.title, body: notification.message });
     } catch (error) {
       followUpErrors.push(`Notification: ${error.message}`);
     }

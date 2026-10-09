@@ -1,7 +1,11 @@
 const service = require("./notification.service");
+const pushService = require("./push.service");
 const create = async (req, res, next) => { try { return res.status(201).json({ success: true, data: await service.create(req.body, req.user) }); } catch (error) { next(error); } };
 const list = async (req, res, next) => { try { return res.json({ success: true, data: await service.list(req.user) }); } catch (error) { next(error); } };
 const markRead = async (req, res, next) => { try { return res.json({ success: true, data: await service.markRead(req.params.id, req.user) }); } catch (error) { next(error); } };
 const unreadCount = async (req, res, next) => { try { return res.json({ success: true, data: { count: await service.unreadCount(req.user) } }); } catch (error) { next(error); } };
 const markAllRead = async (req, res, next) => { try { return res.json({ success: true, data: await service.markAllRead(req.user) }); } catch (error) { next(error); } };
-module.exports = { create, list, markRead, unreadCount, markAllRead };
+const pushKey = (req, res) => res.json({ success: true, data: { configured: pushService.isConfigured(), publicKey: pushService.getPublicKey() } });
+const savePushSubscription = async (req, res, next) => { try { await pushService.saveSubscription(req.user.userId, req.body); return res.status(201).json({ success: true, message: "Phone alerts enabled." }); } catch (error) { next(error); } };
+const removePushSubscription = async (req, res, next) => { try { await pushService.removeSubscription(req.user.userId, req.body.endpoint); return res.json({ success: true, message: "Phone alerts disabled." }); } catch (error) { next(error); } };
+module.exports = { create, list, markRead, unreadCount, markAllRead, pushKey, savePushSubscription, removePushSubscription };

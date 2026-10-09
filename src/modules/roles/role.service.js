@@ -5,6 +5,7 @@ const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./role.repository");
 const { audit } = require("./role.utils");
 const { sendRoleAssignmentEmail, sendRoleActivatedEmail } = require("../../config/mailer");
+const pushService = require("../notifications/push.service");
 const { UserRole } = require("@prisma/client");
 const generateRegistrationNumber = require("../../core/utils/generate-registration-number");
 
@@ -186,7 +187,7 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
     await prisma.userSession.deleteMany({ where: { userId } });
     for (const assignedRole of pendingRoles) {
       try {
-        await prisma.notification.create({
+        const notification = await prisma.notification.create({
           data: {
             userId,
             type: "SYSTEM",
@@ -195,6 +196,7 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
             roleAssignmentId: assignedRole.assignmentId
           }
         });
+        await pushService.sendToUsers([userId], { title: notification.title, body: notification.message });
       } catch (err) {
         followUpErrors.push(`Notification: ${err.message}`);
       }
@@ -519,7 +521,7 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
   const followUpErrors = [];
   for (const assignment of newAssignments) {
     try {
-      await prisma.notification.create({
+      const notification = await prisma.notification.create({
         data: {
           userId,
           roleAssignmentId: assignment.assignmentId,
@@ -528,6 +530,7 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
           message: `You have been assigned the role of ${assignment.name}. Activate this role to receive its permissions.`
         }
       });
+      await pushService.sendToUsers([userId], { title: notification.title, body: notification.message });
     } catch (error) {
       followUpErrors.push(`Notification: ${error.message}`);
     }
