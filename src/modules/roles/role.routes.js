@@ -5,7 +5,7 @@ const validate = require("../../core/middleware/validation.middleware");
 const { requireRoles } = require("../../core/middleware/authorization.middleware");
 const controller = require("./role.controller");
 const { ROLE_ROLES } = require("./role.constants");
-const { createRoleSchema, updateRoleSchema, userRoleSchema } = require("./role.validator");
+const { createRoleSchema, updateRoleSchema, roleAssignmentSchema } = require("./role.validator");
 const router = express.Router();
 const testEmailRateLimit = rateLimit({ windowMs: 60_000, limit: 3, standardHeaders: true, legacyHeaders: false });
 
@@ -21,7 +21,7 @@ router.get("/", controller.getAll);
 router.get("/:id", controller.getById);
 router.patch("/:id", validate(updateRoleSchema), controller.update);
 router.delete("/:id", controller.remove);
-router.post("/assign", controller.assign);
+router.post("/assign", validate(roleAssignmentSchema), controller.assign);
 router.post("/test-email", testEmailRateLimit, controller.testEmail);
 router.patch("/users/:userId", controller.changeUserRole);
 router.put("/users/:userId", controller.changeUserRole);

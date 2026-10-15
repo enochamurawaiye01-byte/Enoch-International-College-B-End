@@ -100,15 +100,18 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
   const normalizedRoleIds = Array.isArray(roleIds) ? roleIds : [roleIds];
   const assignedRolesInfo = [];
   const followUpErrors = [];
+  const seenRoleIds = new Set();
 
   // Transaction for Max 3 Super Admin check and atomic role assignments
   await prisma.$transaction(async (tx) => {
     for (const rId of normalizedRoleIds) {
-      let roleObj = await repository.findByName(rId, tx).catch(() => null);
+      let roleObj = await repository.findByName(rId, tx);
       if (!roleObj) {
-        roleObj = await repository.findById(rId, tx).catch(() => null);
+        roleObj = await repository.findById(rId, tx);
       }
       if (!roleObj) throw new NotFoundError(`Role '${rId}' not found`);
+      if (seenRoleIds.has(roleObj.id)) continue;
+      seenRoleIds.add(roleObj.id);
       if (!roleObj.isActive) throw new AppError(`Role '${roleObj.name}' is inactive.`, 409, "ROLE_INACTIVE");
 
       const existingAssignment = await tx.userRoleAssignment.findUnique({
@@ -184,7 +187,6 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
   // Create In-App Notification & Send Activation Email for Pending Roles
   const pendingRoles = assignedRolesInfo.filter(r => r.status === "PENDING" && !r.existing);
   if (pendingRoles.length > 0) {
-    await prisma.userSession.deleteMany({ where: { userId } });
     for (const assignedRole of pendingRoles) {
       try {
         const notification = await prisma.notification.create({
@@ -198,7 +200,8 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
         });
         await pushService.sendToUsers([userId], { title: notification.title, body: notification.message });
       } catch (err) {
-        followUpErrors.push(`Notification: ${err.message}`);
+        console.error("[Role Assignment] In-app notification follow-up failed.", { code: err.code });
+        followUpErrors.push("The role was saved, but its in-app notification could not be delivered.");
       }
 
       if (targetUser.email) {
@@ -213,7 +216,8 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
             activationUrl
           });
         } catch (err) {
-          followUpErrors.push(`Email delivery: ${err.message}`);
+          console.error("[Role Assignment] Activation email follow-up failed.", { code: err.code });
+          followUpErrors.push("The role was saved, but its activation email could not be delivered.");
         }
       }
     }

@@ -9,7 +9,7 @@ const remove = async (req, res, next) => { try { return res.json({ success: true
 
 const assign = async (req, res, next) => {
   try {
-    const result = await service.assignRoles({ userId: req.body.userId, roleIds: req.body.roleId || req.body.roleIds, immediateActive: req.body.immediateActive }, req.user);
+    const result = await service.assignRoles({ userId: req.body.userId, roleIds: req.body.roleId || req.body.roleIds }, req.user);
     return res.json({ success: true, data: result });
   } catch (error) {
     next(error);
