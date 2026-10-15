@@ -90,7 +90,7 @@ const authenticate = async (req, res, next) => {
 
         const permissionKey = moduleActionForRequest(req);
         if (permissionKey && !permissionKey.startsWith("notifications:")
-            && !await hasPermission(req.user, permissionKey)) {
+            && !await hasPermission(req.user, permissionKey, req)) {
             if (permissionKey.startsWith("roles:")) {
                 await prisma.auditLog.create({
                     data: {
@@ -111,5 +111,4 @@ const authenticate = async (req, res, next) => {
 };
 
 module.exports = authenticate;
-
 

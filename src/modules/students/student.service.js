@@ -8,6 +8,20 @@ const { uploadFile, getFileUrl, removeStoredFile } = require("../../config/stora
 const crypto = require("node:crypto");
 const { requiresDepartment } = require("../../core/utils/class-academic-rules");
 
+const TEACHING_ROLES = new Set(["TEACHER", "CLASS_TEACHER", "SUBJECT_TEACHER", "SENIOR_TEACHER"]);
+const isTeachingAccount = (user) => TEACHING_ROLES.has(user?.role);
+const isAssignedTeacherToStudent = async (user, student) => {
+    if (!isTeachingAccount(user)) return false;
+    const assignedClassIds = await repository.findTeacherClassIds(user.userId, user.schoolId);
+    const studentClassIds = new Set([
+        student.currentClassId,
+        ...(student.enrollments || [])
+            .filter((enrollment) => enrollment.status === "ACTIVE" && enrollment.session?.isActive)
+            .map((enrollment) => enrollment.classId)
+    ].filter(Boolean));
+    return assignedClassIds.some((classId) => studentClassIds.has(classId));
+};
+
 const getStudentByUserId = async (userId) => {
     const student = await repository.findByUserId(userId);
 
@@ -47,8 +61,7 @@ const getStudentByRegistrationNumber = async (registrationNumber, actor) => {
 
     const isAdmin = ["SUPER_ADMIN", "ADMIN"].includes(actor?.role);
     const isSelf = student.userId === actor?.userId;
-    const isAssignedTeacher = actor?.role === "TEACHER" && student.currentClassId
-        && await repository.isTeacherAssignedToClass(actor.userId, student.currentClassId);
+    const isAssignedTeacher = await isAssignedTeacherToStudent(actor, student);
     if (!isAdmin && !isSelf && !isAssignedTeacher) {
         throw new AppError("You can only access your own student profile.", 403, "STUDENT_ACCESS_DENIED");
     }
@@ -122,8 +135,8 @@ const getAllStudents = async (query, user) => {
         classId: query?.classId,
         status: query?.status
     };
-    if (user?.role === "TEACHER") {
-        const classIds = await repository.findTeacherClassIds(user.userId);
+    if (isTeachingAccount(user)) {
+        const classIds = await repository.findTeacherClassIds(user.userId, user.schoolId);
         filters.classIds = query?.classId ? classIds.filter((id) => id === query.classId) : classIds;
         delete filters.classId;
     }
@@ -134,7 +147,7 @@ const getStudentById = async (id, user) => {
     const student = await repository.findById(id);
     if (!student) throw new NotFoundError("Student not found");
     if (user?.role === "STUDENT" && student.userId !== user.userId) throw new AppError("You can only view your own student profile.", 403, "STUDENT_ACCESS_DENIED");
-    if (user?.role === "TEACHER" && (!student.currentClassId || !(await repository.isTeacherAssignedToClass(user.userId, student.currentClassId)))) {
+    if (isTeachingAccount(user) && !(await isAssignedTeacherToStudent(user, student))) {
         throw new AppError("You are not assigned to this student's class.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
     }
     return enrichCurrentClassTeacher(student);

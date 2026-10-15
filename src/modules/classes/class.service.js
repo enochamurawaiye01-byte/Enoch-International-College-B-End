@@ -5,6 +5,9 @@ const { CLASS_ERRORS } = require("./class.constants");
 const { hasPermission } = require("../../core/middleware/authorization.middleware");
 const { getFileUrl } = require("../../config/storage");
 
+const TEACHING_ROLES = new Set(["TEACHER", "CLASS_TEACHER", "SUBJECT_TEACHER", "SENIOR_TEACHER"]);
+const isTeachingAccount = (user) => TEACHING_ROLES.has(user?.role);
+
 // Create a class/arm
 const createClass = async (data) => {
     const levelName = data.level.trim();
@@ -51,7 +54,9 @@ const createClass = async (data) => {
 
 // Get all classes
 const getAllClasses = async (user) => {
-    const classIds = user?.role === "TEACHER" ? await classRepository.findTeacherClassIds(user.userId) : undefined;
+    const classIds = isTeachingAccount(user)
+        ? await classRepository.findTeacherClassIds(user.userId, user.schoolId)
+        : undefined;
     return classRepository.findAllClasses(classIds, user?.schoolId);
 };
 
@@ -69,7 +74,7 @@ const getClassById = async (id, user) => {
             "CLASS_NOT_FOUND"
         );
     }
-    if (user?.role === "TEACHER" && !(await classRepository.findTeacherAssignment(user.userId, id))) {
+    if (isTeachingAccount(user) && !(await classRepository.findTeacherAssignment(user.userId, id, user.schoolId))) {
         throw new AppError("You are not assigned to this class.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
     }
 
@@ -78,7 +83,10 @@ const getClassById = async (id, user) => {
 
 const getClassArms = async (id, user) => {
     const schoolClass = await getClassById(id, user);
-    return classRepository.findClassesByLevel(schoolClass.classLevelId, user?.schoolId);
+    const classIds = isTeachingAccount(user)
+        ? await classRepository.findTeacherClassIds(user.userId, user.schoolId)
+        : undefined;
+    return classRepository.findClassesByLevel(schoolClass.classLevelId, user?.schoolId, classIds);
 };
 
 // Update class
@@ -167,8 +175,10 @@ const updateClass = async (id, data) => {
 
 // Delete class
 const getStudents = async (id, user) => {
-	if (["STUDENT", "PARENT"].includes(user?.role)) throw new AppError("You cannot view a class roster.", 403, "CLASS_ROSTER_ACCESS_DENIED");
-    if (!(await hasPermission(user, "classes:view"))) throw new AppError("You cannot view this class roster.", 403, "CLASS_ROSTER_ACCESS_DENIED");
+    if (["STUDENT", "PARENT"].includes(user?.role)) throw new AppError("You cannot view a class roster.", 403, "CLASS_ROSTER_ACCESS_DENIED");
+    if (!isTeachingAccount(user) && !(await hasPermission(user, "classes:view"))) {
+        throw new AppError("You cannot view this class roster.", 403, "CLASS_ROSTER_ACCESS_DENIED");
+    }
     await getClassById(id, user);
     return Promise.all((await classRepository.findStudents(id)).map(async (student) => ({ ...student, profileImageUrl: await getFileUrl(student.profileImageUrl) })));
 };

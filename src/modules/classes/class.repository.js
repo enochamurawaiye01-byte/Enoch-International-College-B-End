@@ -94,9 +94,9 @@ const findClassById = async (id, schoolId) => {
     return schoolClass ? withCurrentClassTeacher(schoolClass) : null;
 };
 
-const findClassesByLevel = async (classLevelId, schoolId) => {
+const findClassesByLevel = async (classLevelId, schoolId, classIds) => {
     const classes = await prisma.class.findMany({
-        where: { classLevelId },
+        where: { classLevelId, ...(classIds ? { id: { in: classIds } } : {}) },
         include: { classLevel: true, _count: { select: { students: true } }, ...currentClassTeacherInclude(schoolId) },
         orderBy: { arm: "asc" },
     });
@@ -172,21 +172,57 @@ const findStudents = (classId) => prisma.student.findMany({
     include: { user: { select: { email: true, phoneNumber: true, status: true } } },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
 });
-const findTeacherAssignment = async (userId, classId) => {
+const findTeacherAssignment = async (userId, classId, schoolId) => {
     const staff = await prisma.staff.findUnique({ where: { userId }, select: { id: true } });
     if (!staff) return null;
+    const activeSessions = await prisma.academicSession.findMany({
+        where: { isActive: true, ...(schoolId ? { schoolId } : {}) },
+        select: { id: true }
+    });
+    const activeSessionIds = activeSessions.map(({ id }) => id);
     const [subjectAssignment, classAssignment] = await Promise.all([
-        prisma.teacherAssignment.findFirst({ where: { classId, staffId: staff.id }, select: { id: true } }),
-        prisma.classTeacherAssignment.findFirst({ where: { classId, staffId: staff.id }, select: { id: true } })
+        prisma.teacherAssignment.findFirst({
+            where: {
+                classId,
+                staffId: staff.id,
+                OR: [{ sessionId: null }, ...(activeSessionIds.length ? [{ sessionId: { in: activeSessionIds } }] : [])]
+            },
+            select: { id: true }
+        }),
+        prisma.classTeacherAssignment.findFirst({
+            where: {
+                classId,
+                staffId: staff.id,
+                session: { isActive: true, ...(schoolId ? { schoolId } : {}) }
+            },
+            select: { id: true }
+        })
     ]);
     return subjectAssignment || classAssignment;
 };
-const findTeacherClassIds = async (userId) => {
+const findTeacherClassIds = async (userId, schoolId) => {
     const staff = await prisma.staff.findUnique({ where: { userId }, select: { id: true } });
     if (!staff) return [];
+    const activeSessions = await prisma.academicSession.findMany({
+        where: { isActive: true, ...(schoolId ? { schoolId } : {}) },
+        select: { id: true }
+    });
+    const activeSessionIds = activeSessions.map(({ id }) => id);
     const [subjectAssignments, classAssignments] = await Promise.all([
-        prisma.teacherAssignment.findMany({ where: { staffId: staff.id }, select: { classId: true } }),
-        prisma.classTeacherAssignment.findMany({ where: { staffId: staff.id }, select: { classId: true } })
+        prisma.teacherAssignment.findMany({
+            where: {
+                staffId: staff.id,
+                OR: [{ sessionId: null }, ...(activeSessionIds.length ? [{ sessionId: { in: activeSessionIds } }] : [])]
+            },
+            select: { classId: true }
+        }),
+        prisma.classTeacherAssignment.findMany({
+            where: {
+                staffId: staff.id,
+                session: { isActive: true, ...(schoolId ? { schoolId } : {}) }
+            },
+            select: { classId: true }
+        })
     ]);
     return [...new Set([...subjectAssignments, ...classAssignments].map((assignment) => assignment.classId))];
 };
@@ -203,6 +239,7 @@ module.exports = {
     createClass,
     findAllClasses,
     findTeacherClassIds,
+    findTeacherAssignment,
     findAllClassLevels,
     findClassById,
     findClassesByLevel,
