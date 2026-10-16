@@ -10,7 +10,7 @@ const { requiresDepartment } = require("../../core/utils/class-academic-rules");
 const { isTeachingAccount } = require("../../core/utils/teaching-roles");
 const isAssignedTeacherToStudent = async (user, student) => {
     if (!isTeachingAccount(user)) return false;
-    const assignedClassIds = await repository.findTeacherClassIds(user.userId, user.schoolId);
+    const assignedClassIds = await repository.findTeacherClassIds(user.userId, user.schoolId, user.role);
     const studentClassIds = new Set([
         student.currentClassId,
         ...(student.enrollments || [])
@@ -142,7 +142,7 @@ const getAllStudents = async (query, user) => {
         status: query?.status
     };
     if (isTeachingAccount(user)) {
-        const classIds = await repository.findTeacherClassIds(user.userId, user.schoolId);
+        const classIds = await repository.findTeacherClassIds(user.userId, user.schoolId, user.role);
         filters.classIds = query?.classId ? classIds.filter((id) => id === query.classId) : classIds;
         delete filters.classId;
     }

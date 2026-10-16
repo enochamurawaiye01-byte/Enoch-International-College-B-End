@@ -80,7 +80,7 @@ const findAll = async ({ schoolId, search, classId, classIds, status } = {}) => 
 };
 const findUserByEmail = async (email) => prisma.user.findUnique({ where: { email } });
 const findClassById = async (id) => prisma.class.findUnique({ where: { id } });
-const findTeacherClassIds = (userId, schoolId) => classRepository.findTeacherClassIds(userId, schoolId);
+const findTeacherClassIds = (userId, schoolId, userRole) => classRepository.findTeacherClassIds(userId, schoolId, userRole);
 const findCurrentClassTeacher = async (classId, schoolId) => prisma.classTeacherAssignment.findFirst({
     where: {
         classId,
@@ -92,7 +92,7 @@ const findCurrentClassTeacher = async (classId, schoolId) => prisma.classTeacher
     },
     orderBy: { createdAt: "desc" },
 });
-const isTeacherAssignedToClass = async (userId, classId, schoolId) => (await findTeacherClassIds(userId, schoolId)).includes(classId);
+const isTeacherAssignedToClass = async (userId, classId, schoolId, userRole) => (await findTeacherClassIds(userId, schoolId, userRole)).includes(classId);
 const updateProfileImage = async (studentId, profileImageUrl) => prisma.student.update({
     where: { id: studentId },
     data: { profileImageUrl },

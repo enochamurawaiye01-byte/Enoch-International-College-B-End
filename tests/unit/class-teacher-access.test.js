@@ -3,6 +3,8 @@ const assert = require("node:assert/strict");
 const { prisma } = require("../../src/config/database");
 const classRepository = require("../../src/modules/classes/class.repository");
 const classService = require("../../src/modules/classes/class.service");
+const studentRepository = require("../../src/modules/students/student.repository");
+const studentService = require("../../src/modules/students/student.service");
 const { hasPermission } = require("../../src/core/middleware/authorization.middleware");
 
 test("class teacher access is assignment-scoped", async (t) => {
@@ -62,6 +64,37 @@ test("class teacher access is assignment-scoped", async (t) => {
       classRepository.findClassById = originals.findClassById;
       classRepository.findTeacherAssignment = originals.findTeacherAssignment;
       classRepository.findStudents = originals.findStudents;
+    }
+  });
+
+  await t.test("class teacher student lookups retain the class-teacher assignment scope", async () => {
+    const originals = {
+      findTeacherClassIds: studentRepository.findTeacherClassIds,
+      findAll: studentRepository.findAll
+    };
+    let filters;
+    studentRepository.findTeacherClassIds = async (userId, schoolId, role) => {
+      assert.equal(userId, "teacher-user");
+      assert.equal(schoolId, "school-1");
+      assert.equal(role, "CLASS_TEACHER");
+      return ["assigned-class"];
+    };
+    studentRepository.findAll = async (query) => {
+      filters = query;
+      return [];
+    };
+
+    try {
+      await studentService.getAllStudents({}, {
+        userId: "teacher-user",
+        schoolId: "school-1",
+        role: "CLASS_TEACHER"
+      });
+      assert.deepEqual(filters.classIds, ["assigned-class"]);
+      assert.equal(filters.classId, undefined);
+    } finally {
+      studentRepository.findTeacherClassIds = originals.findTeacherClassIds;
+      studentRepository.findAll = originals.findAll;
     }
   });
 
@@ -201,8 +234,14 @@ test("class teacher access is assignment-scoped", async (t) => {
       assert.equal(await hasPermission(teacher, "teachers:view", {
         method: "GET", originalUrl: "/api/teachers/me"
       }), true);
+      assert.equal(await hasPermission(teacher, "teachers:view", {
+        method: "GET", originalUrl: "/api/teachers/me/assignments"
+      }), true);
       assert.equal(await hasPermission(student, "teachers:view", {
         method: "GET", originalUrl: "/api/teachers/me"
+      }), false);
+      assert.equal(await hasPermission(teacher, "teachers:view", {
+        method: "GET", originalUrl: "/api/teachers/another-teacher/assignments"
       }), false);
       assert.equal(await hasPermission(student, "results:view", {
         method: "GET", originalUrl: "/api/results/mine"

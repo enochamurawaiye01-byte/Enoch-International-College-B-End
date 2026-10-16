@@ -99,7 +99,9 @@ const hasTeachingSelfReadAccess = (user, permissionKey, req) => {
   const segments = getResourceSegments(req, resource);
   if (resource === "students") return segments?.length === 1 && segments[0] === "me";
   if (resource === "teachers") {
-    return TEACHING_ROLES.has(user.role) && segments?.length === 1 && segments[0] === "me";
+    return TEACHING_ROLES.has(user.role)
+      && (segments?.length === 1 && segments[0] === "me"
+        || segments?.length === 2 && segments[0] === "me" && segments[1] === "assignments");
   }
   return segments?.length === 1 && segments[0] === "mine";
 };
