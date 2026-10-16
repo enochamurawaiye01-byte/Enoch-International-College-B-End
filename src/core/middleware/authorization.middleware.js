@@ -13,7 +13,7 @@ const getResourceSegments = (req, resource) => {
 const hasAssignedClassAccess = async (user, permissionKey, req) => {
   if (!["classes:view", "students:view"].includes(permissionKey)
       || !req || !["GET", "HEAD"].includes((req.method || "").toUpperCase())) return false;
-  const classIds = await classRepository.findTeacherClassIds(user.userId, user.schoolId);
+  const classIds = await classRepository.findTeacherClassIds(user.userId, user.schoolId, user.role);
   if (!classIds.length) return false;
 
   if (permissionKey === "classes:view") {

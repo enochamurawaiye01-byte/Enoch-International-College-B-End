@@ -200,7 +200,7 @@ const findTeacherAssignment = async (userId, classId, schoolId) => {
     ]);
     return subjectAssignment || classAssignment;
 };
-const findTeacherClassIds = async (userId, schoolId) => {
+const findTeacherClassIds = async (userId, schoolId, userRole) => {
     const staff = await prisma.staff.findUnique({ where: { userId }, select: { id: true } });
     if (!staff) return [];
     const activeSessions = await prisma.academicSession.findMany({
@@ -208,23 +208,31 @@ const findTeacherClassIds = async (userId, schoolId) => {
         select: { id: true }
     });
     const activeSessionIds = activeSessions.map(({ id }) => id);
-    const [subjectAssignments, classAssignments] = await Promise.all([
-        prisma.teacherAssignment.findMany({
-            where: {
-                staffId: staff.id,
-                OR: [{ sessionId: null }, ...(activeSessionIds.length ? [{ sessionId: { in: activeSessionIds } }] : [])]
-            },
-            select: { classId: true }
-        }),
-        prisma.classTeacherAssignment.findMany({
-            where: {
-                staffId: staff.id,
-                session: { isActive: true, ...(schoolId ? { schoolId } : {}) }
-            },
-            select: { classId: true }
-        })
+    const classAssignmentsPromise = prisma.classTeacherAssignment.findMany({
+        where: {
+            staffId: staff.id,
+            session: { isActive: true, ...(schoolId ? { schoolId } : {}) }
+        },
+        select: { classId: true }
+    });
+    const subjectAssignmentsPromise = prisma.teacherAssignment.findMany({
+        where: {
+            staffId: staff.id,
+            OR: [{ sessionId: null }, ...(activeSessionIds.length ? [{ sessionId: { in: activeSessionIds } }] : [])]
+        },
+        select: { classId: true }
+    });
+
+    const [classAssignments, subjectAssignments] = await Promise.all([
+        classAssignmentsPromise,
+        subjectAssignmentsPromise,
     ]);
-    return [...new Set([...subjectAssignments, ...classAssignments].map((assignment) => assignment.classId))];
+
+    const assignedClassIds = userRole === "CLASS_TEACHER"
+        ? classAssignments.map((assignment) => assignment.classId)
+        : [...subjectAssignments.map((assignment) => assignment.classId), ...classAssignments.map((assignment) => assignment.classId)];
+
+    return [...new Set(assignedClassIds)];
 };
 
 const deleteClass = async (id) => {

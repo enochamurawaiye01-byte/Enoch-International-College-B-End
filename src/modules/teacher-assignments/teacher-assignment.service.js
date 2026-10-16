@@ -96,6 +96,7 @@ const assignClassTeacher = async (data, user) => {
         repository.findSession(data.sessionId)
     ]);
     if (!staff || staff.status !== "ACTIVE" || staff.user.status !== "ACTIVE") throw new AppError(ERRORS.STAFF_NOT_ACTIVE, 409, "STAFF_NOT_ACTIVE");
+    if (staff.user.role !== "CLASS_TEACHER") throw new AppError("Only staff with the CLASS_TEACHER role can be assigned as a class teacher.", 403, "CLASS_TEACHER_ROLE_REQUIRED");
     if (!schoolClass || !schoolClass.isActive) throw new AppError(ERRORS.CLASS_NOT_FOUND, 404, "CLASS_NOT_FOUND");
     if (!session || !schoolClass.isActive) throw new AppError("Active class and academic session are required.", 404, "SESSION_OR_CLASS_NOT_FOUND");
     return repository.saveClassTeacherAssignment({ staffId: staff.id, classId: schoolClass.id, sessionId: session.id, assignedById: user.userId });

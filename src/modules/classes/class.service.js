@@ -54,7 +54,7 @@ const createClass = async (data) => {
 // Get all classes
 const getAllClasses = async (user) => {
     const classIds = isTeachingAccount(user)
-        ? await classRepository.findTeacherClassIds(user.userId, user.schoolId)
+        ? await classRepository.findTeacherClassIds(user.userId, user.schoolId, user.role)
         : undefined;
     return classRepository.findAllClasses(classIds, user?.schoolId);
 };
@@ -83,7 +83,7 @@ const getClassById = async (id, user) => {
 const getClassArms = async (id, user) => {
     const schoolClass = await getClassById(id, user);
     const classIds = isTeachingAccount(user)
-        ? await classRepository.findTeacherClassIds(user.userId, user.schoolId)
+        ? await classRepository.findTeacherClassIds(user.userId, user.schoolId, user.role)
         : undefined;
     return classRepository.findClassesByLevel(schoolClass.classLevelId, user?.schoolId, classIds);
 };
