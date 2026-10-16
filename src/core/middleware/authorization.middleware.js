@@ -12,7 +12,8 @@ const getResourceSegments = (req, resource) => {
 };
 
 const hasAssignedClassAccess = async (user, permissionKey, req) => {
-  if (!["classes:view", "students:view"].includes(permissionKey)
+  if (!TEACHING_ROLES.has(user.role)
+      || !["classes:view", "students:view"].includes(permissionKey)
       || !req || !["GET", "HEAD"].includes((req.method || "").toUpperCase())) return false;
   const classIds = await classRepository.findTeacherClassIds(user.userId, user.schoolId, user.role);
   if (!classIds.length) return false;
@@ -133,6 +134,24 @@ const hasTeachingResultRouteAccess = (user, permissionKey, req) => {
     && segments?.length === 2 && segments[0] === "term-entry" && segments[1] === "batch";
 };
 
+const hasTeachingAssignmentReadAccess = (user, permissionKey, req) => {
+  if (permissionKey !== "teacher_assignments:view" || !TEACHING_ROLES.has(user.role)
+      || !req || !["GET", "HEAD"].includes((req.method || "").toUpperCase())) return false;
+  const segments = getResourceSegments(req, "teacher-assignments");
+  return segments?.length === 0
+    || segments?.length === 1
+    || (segments?.length === 2 && segments[0] === "class-teachers");
+};
+
+const hasAssignedClassSubjectReadAccess = async (user, permissionKey, req) => {
+  if (permissionKey !== "class_subjects:view" || !TEACHING_ROLES.has(user.role)
+      || !req || !["GET", "HEAD"].includes((req.method || "").toUpperCase())) return false;
+  const segments = getResourceSegments(req, "class-subjects");
+  if (segments?.length !== 0 || !req.query?.classId) return false;
+  const classIds = await classRepository.findTeacherClassIds(user.userId, user.schoolId, user.role);
+  return classIds.includes(req.query.classId);
+};
+
 const hasPermission = async (user, permissionKey, req) => {
   if (!user) return false;
   if (user.role === "SUPER_ADMIN") return true;
@@ -155,6 +174,8 @@ const hasPermission = async (user, permissionKey, req) => {
     || hasTeachingSelfReadAccess(user, permissionKey, req)
     || hasScopedReportCardReadAccess(user, permissionKey, req)
     || hasTeachingResultRouteAccess(user, permissionKey, req)
+    || hasTeachingAssignmentReadAccess(user, permissionKey, req)
+    || await hasAssignedClassSubjectReadAccess(user, permissionKey, req)
     || hasAssignedClassAccess(user, permissionKey, req);
 };
 
