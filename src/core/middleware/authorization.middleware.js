@@ -1,6 +1,7 @@
 const AuthError = require("../errors/AuthError");
 const { prisma } = require("../../config/database");
 const classRepository = require("../../modules/classes/class.repository");
+const { TEACHING_ROLES } = require("../utils/teaching-roles");
 
 const getResourceSegments = (req, resource) => {
   const segments = (req.originalUrl || req.baseUrl || "").split("?")[0].split("/").filter(Boolean);
@@ -79,6 +80,13 @@ const getEffectiveRoleIds = async (user) => {
   return { assignments, roleIds, roleNames };
 };
 
+const hasTeachingDashboardAccess = (user, permissionKey, req) => {
+  if (permissionKey !== "dashboards:view" || !TEACHING_ROLES.has(user.role)
+      || !req || !["GET", "HEAD"].includes((req.method || "").toUpperCase())) return false;
+  const segments = getResourceSegments(req, "dashboard");
+  return segments?.length === 1 && segments[0] === "teacher";
+};
+
 const hasPermission = async (user, permissionKey, req) => {
   if (!user) return false;
   if (user.role === "SUPER_ADMIN") return true;
@@ -97,7 +105,8 @@ const hasPermission = async (user, permissionKey, req) => {
     });
     if (rolePermission) return true;
   }
-  return hasAssignedClassAccess(user, permissionKey, req);
+  return hasTeachingDashboardAccess(user, permissionKey, req)
+    || hasAssignedClassAccess(user, permissionKey, req);
 };
 
 const moduleActionForRequest = (req) => {

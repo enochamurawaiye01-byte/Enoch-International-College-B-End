@@ -140,4 +140,40 @@ test("class teacher access is assignment-scoped", async (t) => {
       prisma.student.findUnique = originals.student;
     }
   });
+
+  await t.test("teaching roles can open only the teacher dashboard without a module grant", async () => {
+    const originals = {
+      userPermission: prisma.userPermission.findFirst,
+      roleAssignments: prisma.userRoleAssignment.findMany,
+      role: prisma.role.findUnique,
+      rolePermission: prisma.rolePermission.findFirst
+    };
+    prisma.userPermission.findFirst = async () => null;
+    prisma.userRoleAssignment.findMany = async () => [];
+    prisma.role.findUnique = async () => null;
+    prisma.rolePermission.findFirst = async () => null;
+
+    try {
+      assert.equal(await hasPermission(
+        { userId: "teacher-user", role: "CLASS_TEACHER" },
+        "dashboards:view",
+        { method: "GET", originalUrl: "/api/dashboard/teacher" }
+      ), true);
+      assert.equal(await hasPermission(
+        { userId: "teacher-user", role: "CLASS_TEACHER" },
+        "dashboards:view",
+        { method: "GET", originalUrl: "/api/dashboard/student" }
+      ), false);
+      assert.equal(await hasPermission(
+        { userId: "teacher-user", role: "STUDENT" },
+        "dashboards:view",
+        { method: "GET", originalUrl: "/api/dashboard/teacher" }
+      ), false);
+    } finally {
+      prisma.userPermission.findFirst = originals.userPermission;
+      prisma.userRoleAssignment.findMany = originals.roleAssignments;
+      prisma.role.findUnique = originals.role;
+      prisma.rolePermission.findFirst = originals.rolePermission;
+    }
+  });
 });

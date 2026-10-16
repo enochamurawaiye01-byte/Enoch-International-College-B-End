@@ -1,17 +1,45 @@
 const express = require("express");
 const authenticate = require("../../core/middleware/auth.middleware");
 const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const { TEACHING_ROLES } = require("../../core/utils/teaching-roles");
+const classRepository = require("../classes/class.repository");
 const { prisma } = require("../../config/database");
 
 const router = express.Router();
 router.use(authenticate);
 
-router.get("/teacher", requireRoles("TEACHER", "STAFF"), async (req, res, next) => {
+router.get("/teacher", requireRoles(...TEACHING_ROLES, "STAFF"), async (req, res, next) => {
     try {
         const staff = await prisma.staff.findUnique({ where: { userId: req.user.userId }, include: { teacherAssignments: { include: { subject: true, class: true } } } });
         if (!staff) return res.status(404).json({ success: false, message: "Teacher profile not found" });
-        const classIds = staff.teacherAssignments.map((item) => item.classId);
-        res.json({ success: true, data: { assignedClasses: new Set(classIds).size, assignedSubjects: new Set(staff.teacherAssignments.map((item) => item.subjectId)).size, totalStudents: classIds.length ? await prisma.student.count({ where: { currentClassId: { in: classIds } } }) : 0, pendingAssignments: await prisma.assignment.count({ where: { staffId: staff.id, status: "PUBLISHED" } }), upcomingExaminations: 0 } });
+        const classIds = await classRepository.findTeacherClassIds(req.user.userId, req.user.schoolId, req.user.role);
+        const classSubjects = classIds.length
+            ? await prisma.classSubject.findMany({ where: { classId: { in: classIds } }, select: { subjectId: true } })
+            : [];
+        const subjectIds = new Set([
+            ...staff.teacherAssignments.map((item) => item.subjectId),
+            ...classSubjects.map((item) => item.subjectId),
+        ]);
+        const totalStudents = classIds.length
+            ? await prisma.student.count({
+                where: {
+                    OR: [
+                        { currentClassId: { in: classIds } },
+                        { enrollments: { some: { classId: { in: classIds }, status: "ACTIVE", session: { isActive: true } } } },
+                    ],
+                },
+            })
+            : 0;
+        res.json({
+            success: true,
+            data: {
+                assignedClasses: classIds.length,
+                assignedSubjects: subjectIds.size,
+                totalStudents,
+                pendingAssignments: await prisma.assignment.count({ where: { staffId: staff.id, status: "PUBLISHED" } }),
+                upcomingExaminations: 0,
+            },
+        });
     } catch (error) { next(error); }
 });
 
