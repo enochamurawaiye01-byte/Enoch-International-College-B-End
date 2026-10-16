@@ -176,4 +176,63 @@ test("class teacher access is assignment-scoped", async (t) => {
       prisma.rolePermission.findFirst = originals.rolePermission;
     }
   });
+
+  await t.test("users can read only their own profile and result entry points", async () => {
+    const originals = {
+      userPermission: prisma.userPermission.findFirst,
+      roleAssignments: prisma.userRoleAssignment.findMany,
+      role: prisma.role.findUnique,
+      rolePermission: prisma.rolePermission.findFirst
+    };
+    prisma.userPermission.findFirst = async () => null;
+    prisma.userRoleAssignment.findMany = async () => [];
+    prisma.role.findUnique = async () => null;
+    prisma.rolePermission.findFirst = async () => null;
+
+    try {
+      const student = { userId: "student-user", role: "STUDENT" };
+      const teacher = { userId: "teacher-user", role: "CLASS_TEACHER" };
+      assert.equal(await hasPermission(student, "students:view", {
+        method: "GET", originalUrl: "/api/students/me"
+      }), true);
+      assert.equal(await hasPermission(student, "students:view", {
+        method: "GET", originalUrl: "/api/students/another-student"
+      }), false);
+      assert.equal(await hasPermission(teacher, "teachers:view", {
+        method: "GET", originalUrl: "/api/teachers/me"
+      }), true);
+      assert.equal(await hasPermission(student, "teachers:view", {
+        method: "GET", originalUrl: "/api/teachers/me"
+      }), false);
+      assert.equal(await hasPermission(student, "results:view", {
+        method: "GET", originalUrl: "/api/results/mine"
+      }), true);
+      assert.equal(await hasPermission(student, "results:view", {
+        method: "GET", originalUrl: "/api/results/another-result"
+      }), false);
+      assert.equal(await hasPermission(student, "report_cards:view", {
+        method: "GET", originalUrl: "/api/report-cards"
+      }), true);
+      assert.equal(await hasPermission(student, "report_cards:view", {
+        method: "POST", originalUrl: "/api/report-cards"
+      }), false);
+      assert.equal(await hasPermission(teacher, "results:view", {
+        method: "GET", originalUrl: "/api/results/teacher"
+      }), true);
+      assert.equal(await hasPermission(teacher, "results:edit", {
+        method: "PUT", originalUrl: "/api/results/term-entry/batch"
+      }), true);
+      assert.equal(await hasPermission(teacher, "report_cards:edit", {
+        method: "PUT", originalUrl: "/api/report-cards/entries/batch"
+      }), true);
+      assert.equal(await hasPermission(teacher, "report_cards:edit", {
+        method: "POST", originalUrl: "/api/report-cards"
+      }), false);
+    } finally {
+      prisma.userPermission.findFirst = originals.userPermission;
+      prisma.userRoleAssignment.findMany = originals.roleAssignments;
+      prisma.role.findUnique = originals.role;
+      prisma.rolePermission.findFirst = originals.rolePermission;
+    }
+  });
 });

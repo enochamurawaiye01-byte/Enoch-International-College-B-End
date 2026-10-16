@@ -87,6 +87,50 @@ const hasTeachingDashboardAccess = (user, permissionKey, req) => {
   return segments?.length === 1 && segments[0] === "teacher";
 };
 
+const hasTeachingSelfReadAccess = (user, permissionKey, req) => {
+  if (!req || !["GET", "HEAD"].includes((req.method || "").toUpperCase())) return false;
+  const resources = {
+    "students:view": "students",
+    "teachers:view": "teachers",
+    "results:view": "results",
+  };
+  const resource = resources[permissionKey];
+  if (!resource) return false;
+  const segments = getResourceSegments(req, resource);
+  if (resource === "students") return segments?.length === 1 && segments[0] === "me";
+  if (resource === "teachers") {
+    return TEACHING_ROLES.has(user.role) && segments?.length === 1 && segments[0] === "me";
+  }
+  return segments?.length === 1 && segments[0] === "mine";
+};
+
+const hasScopedReportCardReadAccess = (user, permissionKey, req) => {
+  if (!["report_cards:view", "report_cards:edit"].includes(permissionKey)
+      || !["STUDENT", ...TEACHING_ROLES].includes(user.role)
+      || !req) return false;
+  const segments = getResourceSegments(req, "report-cards");
+  const method = (req.method || "").toUpperCase();
+  if (user.role === "STUDENT") {
+    return permissionKey === "report_cards:view" && ["GET", "HEAD"].includes(method) && segments?.length === 0;
+  }
+  if (!TEACHING_ROLES.has(user.role)) return false;
+  return (permissionKey === "report_cards:view" && ["GET", "HEAD"].includes(method)
+      && (segments?.length === 0 || (segments?.length === 1 && segments[0] === "entry-sheet")))
+    || (permissionKey === "report_cards:edit" && method === "PUT"
+      && segments?.length === 2 && segments[0] === "entries" && segments[1] === "batch");
+};
+
+const hasTeachingResultRouteAccess = (user, permissionKey, req) => {
+  if (!TEACHING_ROLES.has(user.role) || !req) return false;
+  const segments = getResourceSegments(req, "results");
+  const method = (req.method || "").toUpperCase();
+  if (permissionKey === "results:view" && ["GET", "HEAD"].includes(method)) {
+    return segments?.length === 1 && ["teacher", "term-entry", "term-reports"].includes(segments[0]);
+  }
+  return permissionKey === "results:edit" && method === "PUT"
+    && segments?.length === 2 && segments[0] === "term-entry" && segments[1] === "batch";
+};
+
 const hasPermission = async (user, permissionKey, req) => {
   if (!user) return false;
   if (user.role === "SUPER_ADMIN") return true;
@@ -106,6 +150,9 @@ const hasPermission = async (user, permissionKey, req) => {
     if (rolePermission) return true;
   }
   return hasTeachingDashboardAccess(user, permissionKey, req)
+    || hasTeachingSelfReadAccess(user, permissionKey, req)
+    || hasScopedReportCardReadAccess(user, permissionKey, req)
+    || hasTeachingResultRouteAccess(user, permissionKey, req)
     || hasAssignedClassAccess(user, permissionKey, req);
 };
 

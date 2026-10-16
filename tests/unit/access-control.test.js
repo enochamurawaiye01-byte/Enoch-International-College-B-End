@@ -4,6 +4,8 @@ const roleService = require("../../src/modules/roles/role.service");
 const roleRepository = require("../../src/modules/roles/role.repository");
 const userService = require("../../src/modules/users/user.service");
 const userRepository = require("../../src/modules/users/user.repository");
+const notificationService = require("../../src/modules/notifications/notification.service");
+const notificationRepository = require("../../src/modules/notifications/notification.repository");
 const { prisma } = require("../../src/config/database");
 const { moduleActionForRequest } = require("../../src/core/middleware/authorization.middleware");
 
@@ -177,16 +179,40 @@ test("Access Control & Super Admin Protection Unit Tests", async (t) => {
     process.env.NODE_ENV = "production";
     delete process.env.FRONTEND_URL;
     try {
-      assert.throws(() => roleService.buildRoleActivationUrl("assignment-id"), /FRONTEND_URL must be configured/);
+      assert.throws(() => roleService.buildRoleActivationUrl("assignment-id", "CLASS_TEACHER"), /FRONTEND_URL must be configured/);
       process.env.FRONTEND_URL = "http://erp.example.com";
-      assert.throws(() => roleService.buildRoleActivationUrl("assignment-id"), /must use HTTPS/);
+      assert.throws(() => roleService.buildRoleActivationUrl("assignment-id", "CLASS_TEACHER"), /must use HTTPS/);
       process.env.FRONTEND_URL = "https://erp.example.com/portal/";
-      assert.equal(roleService.buildRoleActivationUrl("assignment-id"), "https://erp.example.com/portal/activate-role.html?assignmentId=assignment-id");
+      assert.equal(
+        roleService.buildRoleActivationUrl("assignment-id", "CLASS_TEACHER"),
+        "https://erp.example.com/portal/pages/teacher/notifications.html?assignmentId=assignment-id"
+      );
     } finally {
       if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = originalNodeEnv;
       if (originalFrontendUrl === undefined) delete process.env.FRONTEND_URL;
       else process.env.FRONTEND_URL = originalFrontendUrl;
+    }
+  });
+
+  await t.test("pending role activation notifications open in the assigned portal", async () => {
+    const originalFindAll = notificationRepository.findAll;
+    notificationRepository.findAll = async () => [{
+      id: "notification-1",
+      roleAssignment: {
+        id: "assignment-1",
+        status: "PENDING",
+        activationExpiresAt: new Date(Date.now() + 60_000),
+        role: { name: "CLASS_TEACHER" }
+      }
+    }];
+
+    try {
+      const [notification] = await notificationService.list({ userId: "teacher-user", role: "STUDENT" });
+      assert.equal(notification.canActivateRole, true);
+      assert.equal(notification.targetPath, "/pages/teacher/notifications.html?assignmentId=assignment-1");
+    } finally {
+      notificationRepository.findAll = originalFindAll;
     }
   });
 

@@ -26,6 +26,11 @@ const TEACHER_WORKSPACE_ROLES = new Set([
 	"LIBRARIAN", "LAB_ATTENDANT", "HEALTH_OFFICER", "DRIVER", "HOSTEL_WARDEN", "INVENTORY_OFFICER", "SECURITY_CHIEF"
 ]);
 
+const workspaceForRole = (role) => role === "PARENT" ? "parent"
+	: role === "STUDENT" ? "student"
+		: MANAGEMENT_ROLES.has(role) ? "management"
+			: TEACHER_WORKSPACE_ROLES.has(role) ? "teacher" : "admin";
+
 const targetPath = (notification, user) => {
 	const text = `${notification.title} ${notification.message}`.toLowerCase();
 	if (user.role === "ADMIN" || user.role === "SUPER_ADMIN") {
@@ -33,11 +38,7 @@ const targetPath = (notification, user) => {
 		if (text.includes("academic session") || text.includes("term")) return "/pages/admin/academic-sessions.html";
 		if (text.includes("audit")) return "/pages/admin/audit-logs.html";
 	}
-	const workspace = user.role === "PARENT" ? "parent"
-		: user.role === "STUDENT" ? "student"
-			: MANAGEMENT_ROLES.has(user.role) ? "management"
-				: TEACHER_WORKSPACE_ROLES.has(user.role) ? "teacher" : "admin";
-	return `/pages/${workspace}/notifications.html`;
+	return `/pages/${workspaceForRole(user.role)}/notifications.html`;
 };
 const list = async (user) => (await repository.findAll({ userId: user.userId })).map((notification) => {
 	const assignment = notification.roleAssignment;
@@ -48,7 +49,7 @@ const list = async (user) => (await repository.findAll({ userId: user.userId }))
 		...notification,
 		canActivateRole: Boolean(canActivateRole),
 		targetPath: canActivateRole
-			? `/activate-role.html?assignmentId=${encodeURIComponent(assignment.id)}`
+			? `/pages/${workspaceForRole(assignment.role.name)}/notifications.html?assignmentId=${encodeURIComponent(assignment.id)}`
 			: targetPath(notification, user)
 	};
 });

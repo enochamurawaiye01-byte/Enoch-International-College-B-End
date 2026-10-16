@@ -22,7 +22,18 @@ const EXCLUSIVE_ROLE_NAMES = new Set([
   "BURSAR",
   "REGISTRAR"
 ]);
-const buildRoleActivationUrl = (assignmentId) => {
+const roleWorkspace = (roleName) => {
+  if (roleName === "STUDENT") return "student";
+  if (roleName === "PARENT") return "parent";
+  if (["MANAGEMENT", "GOVERNING_BOARD", "PRINCIPAL", "VICE_PRINCIPAL", "VICE_PRINCIPAL_ACADEMICS",
+    "VICE_PRINCIPAL_ADMIN", "HEAD_TEACHER", "DEPUTY_HEAD_TEACHER", "ACADEMIC_COORDINATOR",
+    "HEAD_OF_DEPARTMENT", "SUBJECT_COORDINATOR", "DEAN_OF_STUDENTS"].includes(roleName)) return "management";
+  if (["TEACHER", "STAFF", "SENIOR_TEACHER", "CLASS_TEACHER", "SUBJECT_TEACHER", "SCHOOL_COUNSELOR",
+    "LIBRARIAN", "LAB_ATTENDANT", "HEALTH_OFFICER", "DRIVER", "HOSTEL_WARDEN", "INVENTORY_OFFICER",
+    "SECURITY_CHIEF"].includes(roleName)) return "teacher";
+  return "admin";
+};
+const buildRoleActivationUrl = (assignmentId, roleName) => {
   const configuredUrl = process.env.FRONTEND_URL?.trim();
   if (!configuredUrl && process.env.NODE_ENV === "production") {
     throw new Error("FRONTEND_URL must be configured to send role activation links.");
@@ -32,7 +43,7 @@ const buildRoleActivationUrl = (assignmentId) => {
       || (process.env.NODE_ENV === "production" && frontendUrl.protocol !== "https:")) {
     throw new Error("FRONTEND_URL must use HTTPS in production.");
   }
-  frontendUrl.pathname = `${frontendUrl.pathname.replace(/\/$/, "")}/activate-role.html`;
+  frontendUrl.pathname = `${frontendUrl.pathname.replace(/\/$/, "")}/pages/${roleWorkspace(roleName)}/notifications.html`;
   frontendUrl.search = "";
   frontendUrl.searchParams.set("assignmentId", assignmentId);
   return frontendUrl.toString();
@@ -206,7 +217,7 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
 
       if (targetUser.email) {
         try {
-          const activationUrl = buildRoleActivationUrl(assignedRole.assignmentId);
+          const activationUrl = buildRoleActivationUrl(assignedRole.assignmentId, assignedRole.name);
           await sendRoleAssignmentEmail({
             to: targetUser.email,
             name: targetUser.fullName,
@@ -540,7 +551,7 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
     }
     if (targetUser.email) {
       try {
-        const activationUrl = buildRoleActivationUrl(assignment.assignmentId);
+        const activationUrl = buildRoleActivationUrl(assignment.assignmentId, assignment.name);
         await sendRoleAssignmentEmail({
           to: targetUser.email,
           name: targetUser.fullName,
