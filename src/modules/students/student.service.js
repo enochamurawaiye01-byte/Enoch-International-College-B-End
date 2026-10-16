@@ -7,9 +7,7 @@ const AppError = require("../../core/errors/AppError");
 const { uploadFile, getFileUrl, removeStoredFile } = require("../../config/storage");
 const crypto = require("node:crypto");
 const { requiresDepartment } = require("../../core/utils/class-academic-rules");
-
-const TEACHING_ROLES = new Set(["TEACHER", "CLASS_TEACHER", "SUBJECT_TEACHER", "SENIOR_TEACHER"]);
-const isTeachingAccount = (user) => TEACHING_ROLES.has(user?.role);
+const { isTeachingAccount } = require("../../core/utils/teaching-roles");
 const isAssignedTeacherToStudent = async (user, student) => {
     if (!isTeachingAccount(user)) return false;
     const assignedClassIds = await repository.findTeacherClassIds(user.userId, user.schoolId);
@@ -76,11 +74,14 @@ const createStudent = async (data, schoolId) => {
         const schoolClass = await tx.class.findFirst({ where: { id: data.currentClassId, isActive: true }, include: { classLevel: true } });
         if (!schoolClass) throw new AppError("Active class not found.", 404, "CLASS_NOT_FOUND");
         const isSeniorSecondary = requiresDepartment(schoolClass.classLevel.code);
-        if (isSeniorSecondary && !data.desiredDepartmentId) throw new AppError("A department is required for senior secondary students.", 422, "STUDENT_DEPARTMENT_REQUIRED");
-        if (data.desiredDepartmentId && !(await tx.department.findUnique({ where: { id: data.desiredDepartmentId } }))) {
-            throw new AppError("The selected department was not found.", 404, "STUDENT_DEPARTMENT_NOT_FOUND");
+        const selectedDepartmentIds = [...new Set(data.desiredDepartmentIds?.length
+            ? data.desiredDepartmentIds
+            : data.desiredDepartmentId ? [data.desiredDepartmentId] : [])];
+        if (isSeniorSecondary && !selectedDepartmentIds.length) throw new AppError("A department is required for senior secondary students.", 422, "STUDENT_DEPARTMENT_REQUIRED");
+        if (selectedDepartmentIds.length && !isSeniorSecondary) throw new AppError("Departments can only be selected for senior secondary classes.", 422, "STUDENT_DEPARTMENT_NOT_ALLOWED");
+        if (selectedDepartmentIds.length && (await tx.department.count({ where: { id: { in: selectedDepartmentIds } } })) !== selectedDepartmentIds.length) {
+            throw new AppError("One or more selected departments were not found.", 404, "STUDENT_DEPARTMENT_NOT_FOUND");
         }
-        if (!isSeniorSecondary && data.desiredDepartmentId) throw new AppError("Departments can only be selected for senior secondary classes.", 422, "STUDENT_DEPARTMENT_NOT_ALLOWED");
 
         const fullName = [data.firstName, data.middleName, data.lastName].filter(Boolean).join(" ");
         const passwordHash = await hashPassword(data.password || crypto.randomBytes(24).toString("base64url"));
@@ -106,19 +107,24 @@ const createStudent = async (data, schoolId) => {
             gender: data.gender || null,
             address: data.address || null,
             currentClassId: data.currentClassId,
-            desiredDepartmentId: data.desiredDepartmentId || null,
+            desiredDepartmentId: selectedDepartmentIds[0] || null,
             currentSessionId: session?.id || null,
             currentTerm: term?.name || null,
             status,
             admissionDate: new Date()
         }, include: { user: true, currentClass: { include: { classLevel: true } } } });
 
+        if (selectedDepartmentIds.length) await tx.studentDepartmentSelection.createMany({
+            data: selectedDepartmentIds.map((departmentId) => ({ studentId: student.id, departmentId })),
+            skipDuplicates: true,
+        });
+
         if (status === "ACTIVE") {
             const enrollment = await tx.enrollment.create({
-                data: { studentId: student.id, sessionId: session.id, termId: term.id, classId: schoolClass.id, departmentId: isSeniorSecondary ? data.desiredDepartmentId : null, status: "ACTIVE" },
+                data: { studentId: student.id, sessionId: session.id, termId: term.id, classId: schoolClass.id, departmentId: isSeniorSecondary ? selectedDepartmentIds[0] : null, status: "ACTIVE" },
             });
             const classSubjects = await tx.classSubject.findMany({ where: { classId: schoolClass.id, subject: { isActive: true } }, include: { subject: true } });
-            const applicableSubjects = classSubjects.filter(({ subject }) => !isSeniorSecondary || !subject.departmentId || subject.departmentId === data.desiredDepartmentId);
+            const applicableSubjects = classSubjects.filter(({ subject }) => !isSeniorSecondary || !subject.departmentId || selectedDepartmentIds.includes(subject.departmentId));
             if (applicableSubjects.length) await tx.studentSubjectEnrollment.createMany({
                 data: applicableSubjects.map(({ id }) => ({ enrollmentId: enrollment.id, classSubjectId: id })),
                 skipDuplicates: true,

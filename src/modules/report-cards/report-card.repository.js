@@ -34,6 +34,7 @@ const findClassSubject = (classId, subjectId) => prisma.classSubject.findUnique(
 });
 const findStaffByUserId = (userId) => prisma.staff.findUnique({ where: { userId }, select: { id: true, status: true } });
 const findTeacherAssignment = (filters) => prisma.teacherAssignment.findFirst({ where: filters, select: { id: true } });
+const findClassTeacherAssignment = (filters) => prisma.classTeacherAssignment.findFirst({ where: filters, select: { id: true } });
 const findConfiguration = (scopeKey) => prisma.assessmentConfiguration.findUnique({ where: { scopeKey } });
 const saveConfiguration = (scopeKey, schoolId, updatedById, data) => prisma.assessmentConfiguration.upsert({
 	where: { scopeKey },
@@ -42,6 +43,6 @@ const saveConfiguration = (scopeKey, schoolId, updatedById, data) => prisma.asse
 });
 module.exports = {
 	findById, findExisting, findStudent, findEnrollment, findSession, findTerm, findSubject, upsert, update, findAll,
-	findClass, findEnrollmentRoster, findClassSubject, findStaffByUserId, findTeacherAssignment,
+	findClass, findEnrollmentRoster, findClassSubject, findStaffByUserId, findTeacherAssignment, findClassTeacherAssignment,
 	findConfiguration, saveConfiguration
 };

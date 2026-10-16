@@ -3,6 +3,7 @@ const AppError = require("../../core/errors/AppError");
 const repository = require("./result.repository");
 const { prisma } = require("../../config/database");
 const { hasPermission } = require("../../core/middleware/authorization.middleware");
+const { isTeachingAccount } = require("../../core/utils/teaching-roles");
 
 const calculateGrade = (percentage) => {
 	const pct = Number(percentage);
@@ -19,7 +20,7 @@ const getById = async (id, user) => {
 	if (user?.role === "STUDENT" && (result.student.userId !== user.userId || !result.published)) {
 		throw new AppError("You can only view your own published results.", 403, "RESULT_ACCESS_DENIED");
 	}
-	if (user?.role === "TEACHER") {
+	if (isTeachingAccount(user)) {
 		const staff = await prisma.staff.findUnique({ where: { userId: user.userId }, select: { id: true } });
 		const assignment = staff ? await prisma.teacherAssignment.findFirst({
 			where: {
@@ -32,7 +33,7 @@ const getById = async (id, user) => {
 		}) : null;
 		if (!assignment) throw new AppError("You are not assigned to this result's class and subject.", 403, "RESULT_ACCESS_DENIED");
 	}
-	if (user && !["STUDENT", "TEACHER"].includes(user.role)) {
+	if (user && user.role !== "STUDENT" && !isTeachingAccount(user)) {
 		if (!await hasPermission(user, "results:view")) throw new AppError("You cannot view this result.", 403, "RESULT_ACCESS_DENIED");
 	}
 	return result;
@@ -60,7 +61,7 @@ const getAll = async (query, user) => {
 		where.published = true;
 		return repository.findAll(where);
 	}
-	if (user?.role === "TEACHER") return repository.findForTeacher(user.userId, where);
+	if (isTeachingAccount(user)) return repository.findForTeacher(user.userId, where);
 	if (!await hasPermission(user, "results:view")) throw new AppError("You cannot view these results.", 403, "RESULT_ACCESS_DENIED");
 	return repository.findAll(where);
 };
@@ -188,4 +189,3 @@ module.exports = {
 	updateResult,
 	publishExamResults,
 };
-

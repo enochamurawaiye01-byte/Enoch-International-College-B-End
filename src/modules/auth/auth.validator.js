@@ -121,6 +121,10 @@ const registerSchema = z
     role: z.enum(["STUDENT", "TEACHER", "PARENT"]).default("STUDENT"),
     currentClassId: z.string().uuid().optional(),
     desiredDepartmentId: z.string().uuid().optional(),
+    desiredDepartmentIds: z.preprocess(
+      (value) => value == null || value === "" ? undefined : Array.isArray(value) ? value : [value],
+      z.array(z.string().uuid()).min(1).max(20).optional()
+    ),
     jobTitle: optionalText(z.string().trim().max(120)),
     qualification: optionalText(z.string().trim().max(300)),
     childRegistrationNumber: optionalText(z.string().trim().min(2).max(50)),

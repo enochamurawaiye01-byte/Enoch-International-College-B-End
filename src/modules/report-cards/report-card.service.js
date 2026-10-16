@@ -5,9 +5,10 @@ const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGUR
 const { prisma } = require("../../config/database");
 const { requiresDepartment } = require("../../core/utils/class-academic-rules");
 const { hasPermission } = require("../../core/middleware/authorization.middleware");
+const { isTeachingAccount } = require("../../core/utils/teaching-roles");
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"]);
 const isAdmin = (role) => ADMIN_ROLES.has(role);
-const canManageResults = async (user) => Boolean(user) && user.role !== "TEACHER" && (
+const canManageResults = async (user) => Boolean(user) && !isTeachingAccount(user) && (
 	isAdmin(user.role)
 	|| await hasPermission(user, "results:edit")
 	|| await hasPermission(user, "report_cards:edit")
@@ -35,7 +36,7 @@ const updateConfiguration = async (data, user) => {
 
 const assertTeacherAssignment = async (user, { classId, subjectId, sessionId, termId }) => {
 	if (await canManageResults(user)) return null;
-	if (user.role !== "TEACHER") throw new AppError("You cannot manage these results.", 403, "REPORT_CARD_ACCESS_DENIED");
+	if (!isTeachingAccount(user)) throw new AppError("You cannot manage these results.", 403, "REPORT_CARD_ACCESS_DENIED");
 	const staff = await repository.findStaffByUserId(user.userId);
 	if (!staff || staff.status !== "ACTIVE") throw new AppError("An active staff profile is required.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
 	const assignment = await repository.findTeacherAssignment({
@@ -168,7 +169,7 @@ const saveEntries = async (data, user) => {
 					total: calculated.total,
 					grade: calculated.grade,
 					remark: calculated.remark,
-					teacherComment: item.teacherComment || null
+					teacherComment: item.teacherComment ?? null
 				},
 				update: {
 					teacherId: staffId || existingEntry.teacherId,
@@ -179,7 +180,7 @@ const saveEntries = async (data, user) => {
 					total: calculated.total,
 					grade: calculated.grade,
 					remark: calculated.remark,
-					teacherComment: item.teacherComment || null
+					teacherComment: item.teacherComment ?? existingEntry?.teacherComment ?? null
 				},
 				include: { subject: true }
 			});
@@ -224,7 +225,7 @@ const getById = async (id, user) => {
 	if (!user) throw new AppError("Authentication required.", 401, "UNAUTHENTICATED");
 	if (user.role === "STUDENT" && report.student.userId !== user.userId) throw new AppError("You can only view your own report card.", 403, "REPORT_CARD_ACCESS_DENIED");
 	if (user.role === "STUDENT" && !report.studentPublished) throw new AppError("This report card has not been published to the student portal.", 403, "REPORT_CARD_NOT_PUBLISHED");
-	if (user.role === "TEACHER") {
+	if (isTeachingAccount(user)) {
 		const staff = await repository.findStaffByUserId(user.userId);
 		const allowedEntries = staff ? await Promise.all(report.entries.map(async (entry) => Boolean(await repository.findTeacherAssignment({
 			staffId: staff.id, classId: report.classId, subjectId: entry.subjectId,
@@ -402,7 +403,7 @@ const publishClassTerm = async (data, user) => {
 };
 
 const getAll = async (query, user) => {
-	if (!user || (!isAdmin(user.role) && !["TEACHER", "STUDENT"].includes(user.role) && !(await hasPermission(user, "results:view")))) {
+	if (!user || (!isAdmin(user.role) && !isTeachingAccount(user) && user.role !== "STUDENT" && !(await hasPermission(user, "results:view")))) {
 		throw new AppError("You cannot view these report cards.", 403, "REPORT_CARD_ACCESS_DENIED");
 	}
 	const where = {};
@@ -418,7 +419,7 @@ const getAll = async (query, user) => {
 		where.studentPublished = true;
 	}
 	let assignments = [];
-	if (user.role === "TEACHER") {
+	if (isTeachingAccount(user)) {
 		const staff = await repository.findStaffByUserId(user.userId);
 		if (!staff) return [];
 		assignments = await prisma.teacherAssignment.findMany({
@@ -440,12 +441,15 @@ const getAll = async (query, user) => {
 		}));
 	}
 	const reports = await repository.findAll(where);
-	if (user.role !== "TEACHER") return reports;
-	return reports.map((report) => ({ ...report, entries: report.entries.filter((entry) => assignments.some((assignment) =>
-		assignment.classId === report.classId && assignment.subjectId === entry.subjectId
-		&& (!assignment.sessionId || assignment.sessionId === report.sessionId)
-		&& (!assignment.termId || assignment.termId === report.termId)
-	)) })).filter((report) => report.entries.length);
+	if (!isTeachingAccount(user)) return reports;
+	return reports.map((report) => ({
+		...report,
+		entries: report.entries.filter((entry) => assignments.some((assignment) =>
+			assignment.classId === report.classId && assignment.subjectId === entry.subjectId
+			&& (!assignment.sessionId || assignment.sessionId === report.sessionId)
+			&& (!assignment.termId || assignment.termId === report.termId)
+		))
+	})).filter((report) => report.entries.length);
 };
 
 module.exports = { create, update, getById, publish, publishClassTerm, getAll, getConfiguration, updateConfiguration, getEntrySheet, saveEntries, canManageResults };

@@ -5,8 +5,7 @@ const { CLASS_ERRORS } = require("./class.constants");
 const { hasPermission } = require("../../core/middleware/authorization.middleware");
 const { getFileUrl } = require("../../config/storage");
 
-const TEACHING_ROLES = new Set(["TEACHER", "CLASS_TEACHER", "SUBJECT_TEACHER", "SENIOR_TEACHER"]);
-const isTeachingAccount = (user) => TEACHING_ROLES.has(user?.role);
+const { isTeachingAccount } = require("../../core/utils/teaching-roles");
 
 // Create a class/arm
 const createClass = async (data) => {

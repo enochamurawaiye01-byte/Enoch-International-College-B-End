@@ -947,6 +947,7 @@ model Department {
   staff    Staff[]
   enrollments Enrollment[]
   studentApplicants Student[] @relation("StudentDesiredDepartment")
+  studentDepartmentSelections StudentDepartmentSelection[]
   admissionApplicants Admission[] @relation("AdmissionDesiredDepartment")
 
   createdAt DateTime @default(now())
@@ -1081,6 +1082,7 @@ model Student {
 
   parentLinks ParentStudent[]
   enrollments Enrollment[]
+  departmentSelections StudentDepartmentSelection[]
 
   attendance        StudentAttendance[]
   scores            Score[]
@@ -1119,6 +1121,21 @@ model Student {
   @@index([currentClassId])
   @@index([status])
   @@index([firstName, lastName])
+}
+
+model StudentDepartmentSelection {
+  id           String     @id @default(uuid())
+  studentId    String
+  departmentId String
+
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, departmentId])
+  @@index([studentId])
+  @@index([departmentId])
 }
 
 // ============================================================

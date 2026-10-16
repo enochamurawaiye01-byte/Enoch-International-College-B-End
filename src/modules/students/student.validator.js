@@ -15,6 +15,7 @@ const createStudentSchema = z.object({
 	address: z.string().trim().max(500).optional().nullable(),
 	currentClassId: uuid,
 	desiredDepartmentId: uuid.optional().nullable(),
+	desiredDepartmentIds: z.array(uuid).min(1).max(20).optional(),
 	status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED", "GRADUATED", "WITHDRAWN", "TRANSFERRED", "EXPELLED", "DECEASED"]).optional(),
 }).strict();
 

@@ -3,19 +3,16 @@ const repository = require("./teacher-assignment.repository");
 const { hasPermission } = require("../../core/middleware/authorization.middleware");
 const { getFileUrl } = require("../../config/storage");
 const { TEACHER_ASSIGNMENT_ERRORS: ERRORS } = require("./teacher-assignment.constants");
+const { isTeachingAccount } = require("../../core/utils/teaching-roles");
 
 const create = async (data) => {
-    const [staff, schoolClass, subject, classSubject] = await Promise.all([
+    const [staff, subject] = await Promise.all([
         repository.findStaffById(data.staffId),
-        repository.findClassById(data.classId),
         repository.findSubjectById(data.subjectId),
-        repository.findClassSubject(data.classId, data.subjectId),
     ]);
     if (!staff) throw new AppError(ERRORS.STAFF_NOT_FOUND, 404, "STAFF_NOT_FOUND");
     if (staff.status !== "ACTIVE") throw new AppError(ERRORS.STAFF_NOT_ACTIVE, 409, "STAFF_NOT_ACTIVE");
-    if (!schoolClass) throw new AppError(ERRORS.CLASS_NOT_FOUND, 404, "CLASS_NOT_FOUND");
     if (!subject) throw new AppError(ERRORS.SUBJECT_NOT_FOUND, 404, "SUBJECT_NOT_FOUND");
-    if (!classSubject) throw new AppError(ERRORS.SUBJECT_NOT_ASSIGNED_TO_CLASS, 409, "SUBJECT_NOT_ASSIGNED_TO_CLASS");
     const session = data.sessionId ? await repository.findSession(data.sessionId) : null;
     const term = data.termId ? await repository.findTerm(data.termId) : null;
     if (data.sessionId && !session) throw new AppError("Academic session not found.", 404, "SESSION_NOT_FOUND");
@@ -23,6 +20,23 @@ const create = async (data) => {
     if (term && session && term.sessionId !== session.id) throw new AppError("Term does not belong to the selected session.", 409, "TERM_SESSION_MISMATCH");
 
     const assignmentData = { ...data, sessionId: data.sessionId || null, termId: data.termId || null };
+    if (data.classLevel) {
+        const classesWithSubject = await repository.findClassesWithSubject(data.subjectId, data.classLevel);
+        if (!classesWithSubject.length) throw new AppError(ERRORS.SUBJECT_NOT_ASSIGNED_TO_CLASS, 409, "SUBJECT_NOT_ASSIGNED_TO_CLASS");
+        return repository.createForClasses(classesWithSubject.map(({ class: schoolClass }) => ({
+            staffId: data.staffId,
+            subjectId: data.subjectId,
+            classId: schoolClass.id,
+            sessionId: assignmentData.sessionId,
+            termId: assignmentData.termId
+        })));
+    }
+    const [schoolClass, classSubject] = await Promise.all([
+        repository.findClassById(data.classId),
+        repository.findClassSubject(data.classId, data.subjectId)
+    ]);
+    if (!schoolClass) throw new AppError(ERRORS.CLASS_NOT_FOUND, 404, "CLASS_NOT_FOUND");
+    if (!classSubject) throw new AppError(ERRORS.SUBJECT_NOT_ASSIGNED_TO_CLASS, 409, "SUBJECT_NOT_ASSIGNED_TO_CLASS");
     if (await repository.findDuplicate(assignmentData)) throw new AppError(ERRORS.ASSIGNMENT_ALREADY_EXISTS, 409, "ASSIGNMENT_ALREADY_EXISTS");
     return repository.create(assignmentData);
 };
@@ -32,7 +46,7 @@ const getAll = async (query, user) => {
     ["staffId", "classId", "subjectId", "sessionId", "termId"].forEach((key) => {
         if (query[key]) filters[key] = query[key];
     });
-    if (user?.role === "TEACHER") {
+    if (isTeachingAccount(user)) {
         const staff = await repository.findStaffByUserId(user.userId);
         if (!staff) return [];
         filters.staffId = staff.id;
@@ -47,7 +61,7 @@ const getAll = async (query, user) => {
 const getById = async (id, user) => {
     const assignment = await repository.findById(id);
     if (!assignment) throw new AppError(ERRORS.ASSIGNMENT_NOT_FOUND, 404, "ASSIGNMENT_NOT_FOUND");
-    if (user?.role === "TEACHER") {
+    if (isTeachingAccount(user)) {
         const staff = await repository.findStaffByUserId(user.userId);
         if (!staff || assignment.staffId !== staff.id) throw new AppError("You can only view your own assignments.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
     } else if (!await hasPermission(user, "teacher_assignments:view")) {
@@ -62,7 +76,7 @@ const getClassTeachers = async (query, user) => {
         ...(query.classId ? { classId: query.classId } : {}),
         ...(query.sessionId ? { sessionId: query.sessionId } : {})
     };
-    if (user?.role === "TEACHER") {
+    if (isTeachingAccount(user)) {
         const staff = await repository.findStaffByUserId(user.userId);
         if (!staff) return [];
         filters.staffId = staff.id;

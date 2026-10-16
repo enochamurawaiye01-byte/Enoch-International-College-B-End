@@ -55,6 +55,7 @@ const register = async (data, applicationLetterUrl = null) => {
         role = "STUDENT",
         currentClassId,
         desiredDepartmentId,
+        desiredDepartmentIds = [],
         jobTitle,
         qualification,
         childRegistrationNumber,
@@ -101,6 +102,7 @@ const register = async (data, applicationLetterUrl = null) => {
 
     const result = await prisma.$transaction(async (tx) => {
         let selectedClass = null;
+        let selectedDepartmentIds = [...new Set(desiredDepartmentIds.length ? desiredDepartmentIds : desiredDepartmentId ? [desiredDepartmentId] : [])];
         if (role === "STUDENT") {
             selectedClass = await tx.class.findFirst({
                 where: { id: currentClassId, isActive: true },
@@ -108,11 +110,12 @@ const register = async (data, applicationLetterUrl = null) => {
             });
             if (!selectedClass) throw new AuthError("Select an active class.", 422, "STUDENT_CLASS_REQUIRED");
             const isSeniorSecondary = requiresDepartment(selectedClass.classLevel.code);
-            if (isSeniorSecondary && !desiredDepartmentId) throw new AuthError("Select a department for senior secondary students.", 422, "STUDENT_DEPARTMENT_REQUIRED");
-            if (desiredDepartmentId && !(await tx.department.findUnique({ where: { id: desiredDepartmentId } }))) {
-                throw new AuthError("The selected department was not found.", 422, "STUDENT_DEPARTMENT_NOT_FOUND");
-            }
-            if (!isSeniorSecondary && desiredDepartmentId) throw new AuthError("Departments can only be selected for senior secondary classes.", 422, "STUDENT_DEPARTMENT_NOT_ALLOWED");
+            if (isSeniorSecondary && !selectedDepartmentIds.length) throw new AuthError("Select at least one department for senior secondary students.", 422, "STUDENT_DEPARTMENT_REQUIRED");
+            if (selectedDepartmentIds.length && !isSeniorSecondary) throw new AuthError("Departments can only be selected for senior secondary classes.", 422, "STUDENT_DEPARTMENT_NOT_ALLOWED");
+            const departments = selectedDepartmentIds.length ? await tx.department.findMany({ where: { id: { in: selectedDepartmentIds } }, select: { id: true } }) : [];
+            if (departments.length !== selectedDepartmentIds.length) throw new AuthError("One or more selected departments were not found.", 422, "STUDENT_DEPARTMENT_NOT_FOUND");
+        } else {
+            selectedDepartmentIds = [];
         }
 
         const user = await tx.user.create({
@@ -142,11 +145,17 @@ const register = async (data, applicationLetterUrl = null) => {
                 stateOfOrigin: stateOfOrigin || null,
                 localGovernment: localGovernment || null,
                 currentClassId: selectedClass.id,
-                desiredDepartmentId: desiredDepartmentId || null,
+                desiredDepartmentId: selectedDepartmentIds[0] || null,
                 admissionDate: null,
                 status: "INACTIVE",
             },
         }) : null;
+        if (student && selectedDepartmentIds.length) {
+            await tx.studentDepartmentSelection.createMany({
+                data: selectedDepartmentIds.map((departmentId) => ({ studentId: student.id, departmentId })),
+                skipDuplicates: true,
+            });
+        }
 
         const parent = role === "PARENT" ? await tx.parent.create({
             data: { userId: user.id, firstName, middleName: middleName || null, lastName, relationship: relationship || null, occupation: occupation || null, address: address || null },

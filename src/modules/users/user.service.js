@@ -149,7 +149,11 @@ const activateStudentApplication = async (target) => prisma.$transaction(async (
 
   const isSeniorSecondary = requiresDepartment(schoolClass.classLevel.code);
   if (isSeniorSecondary && !student.desiredDepartmentId) throw new AppError("A department is required for senior secondary students.", 409, "STUDENT_DEPARTMENT_REQUIRED");
-  if (student.desiredDepartmentId && !(await tx.department.findUnique({ where: { id: student.desiredDepartmentId } }))) {
+  const selectedDepartmentRows = await tx.studentDepartmentSelection.findMany({ where: { studentId: student.id }, select: { departmentId: true } });
+  const departmentIds = [...new Set(selectedDepartmentRows.length
+    ? selectedDepartmentRows.map(({ departmentId }) => departmentId)
+    : student.desiredDepartmentId ? [student.desiredDepartmentId] : [])];
+  if (departmentIds.length && (await tx.department.count({ where: { id: { in: departmentIds } } })) !== departmentIds.length) {
     throw new AppError("The selected department no longer exists.", 409, "STUDENT_DEPARTMENT_UNAVAILABLE");
   }
 
@@ -174,7 +178,7 @@ const activateStudentApplication = async (target) => prisma.$transaction(async (
     },
   });
 
-  const departmentId = isSeniorSecondary ? student.desiredDepartmentId : null;
+  const departmentId = isSeniorSecondary ? departmentIds[0] : null;
   const enrollment = await tx.enrollment.upsert({
     where: { studentId_sessionId_termId: { studentId: student.id, sessionId: session.id, termId: term.id } },
     update: { classId: schoolClass.id, departmentId, status: "ACTIVE" },
@@ -184,7 +188,7 @@ const activateStudentApplication = async (target) => prisma.$transaction(async (
     where: { classId: schoolClass.id, subject: { isActive: true } },
     include: { subject: true },
   });
-  const applicableSubjects = classSubjects.filter(({ subject }) => !isSeniorSecondary || !subject.departmentId || subject.departmentId === departmentId);
+  const applicableSubjects = classSubjects.filter(({ subject }) => !isSeniorSecondary || !subject.departmentId || departmentIds.includes(subject.departmentId));
   if (applicableSubjects.length) {
     await tx.studentSubjectEnrollment.createMany({
       data: applicableSubjects.map(({ id }) => ({ enrollmentId: enrollment.id, classSubjectId: id })),
