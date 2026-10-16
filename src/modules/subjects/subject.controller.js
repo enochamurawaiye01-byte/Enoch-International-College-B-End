@@ -73,13 +73,14 @@ const updateSubject = async (req, res, next) => {
 // Delete subject
 const deleteSubject = async (req, res, next) => {
     try {
-        await subjectService.deleteSubject(
+        const result = await subjectService.deleteSubject(
             req.params.id
         );
 
         return res.status(200).json({
             success: true,
-            message: "Subject deleted successfully.",
+            message: result.archived ? "Subject is in use, so it was archived and removed from future selection." : "Subject deleted successfully.",
+            data: result,
         });
     } catch (error) {
         next(error);

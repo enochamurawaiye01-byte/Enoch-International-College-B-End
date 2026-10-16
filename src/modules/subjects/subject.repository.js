@@ -8,11 +8,53 @@ const createSubject = async (data) => {
     });
 };
 
+const createSubjectWithTargets = async (data, targets) => prisma.$transaction(async (tx) => {
+    const subject = await tx.subject.create({ data });
+    await tx.subjectTarget.createMany({
+        data: targets.map((target) => ({ ...target, subjectId: subject.id })),
+    });
+    const classes = await tx.class.findMany({
+        where: { isActive: true, classLevelId: { in: [...new Set(targets.map(({ classLevelId }) => classLevelId))] } },
+        select: { id: true, classLevelId: true },
+    });
+    if (classes.length) {
+        await tx.classSubject.createMany({
+            data: classes.map((schoolClass) => ({ classId: schoolClass.id, subjectId: subject.id })),
+            skipDuplicates: true,
+        });
+        if (subject.isActive) {
+            const [classSubjects, enrollments] = await Promise.all([
+                tx.classSubject.findMany({
+                    where: { classId: { in: classes.map(({ id }) => id) }, subjectId: subject.id },
+                    select: { id: true, classId: true },
+                }),
+                tx.enrollment.findMany({
+                    where: { classId: { in: classes.map(({ id }) => id) }, status: "ACTIVE", session: { isActive: true } },
+                    select: { id: true, classId: true, departmentId: true },
+                }),
+            ]);
+            const classLevelById = new Map(classes.map(({ id, classLevelId }) => [id, classLevelId]));
+            const classSubjectByClassId = new Map(classSubjects.map(({ id, classId }) => [classId, id]));
+            const registrations = enrollments.filter((enrollment) => targets.some((target) =>
+                target.classLevelId === classLevelById.get(enrollment.classId)
+                && (target.departmentId == null || target.departmentId === enrollment.departmentId)
+            )).map((enrollment) => ({
+                enrollmentId: enrollment.id,
+                classSubjectId: classSubjectByClassId.get(enrollment.classId),
+            })).filter(({ classSubjectId }) => classSubjectId);
+            if (registrations.length) {
+                await tx.studentSubjectEnrollment.createMany({ data: registrations, skipDuplicates: true });
+            }
+        }
+    }
+    return tx.subject.findUnique({ where: { id: subject.id }, include: { department: true, targets: { include: { classLevel: true, department: true } } } });
+});
+
 // Get all subjects
 const findAllSubjects = async (where) => {
     return prisma.subject.findMany({
         where,
-        include: { department: true },
+        include: { department: true, targets: { include: { classLevel: true, department: true } } },
         orderBy: {
             name: "asc",
         },
@@ -25,7 +67,7 @@ const findSubjectById = async (id) => {
         where: {
             id,
         },
-        include: { department: true },
+        include: { department: true, targets: { include: { classLevel: true, department: true } } },
     });
 };
 
@@ -83,6 +125,12 @@ const findSubjectUsage = async (id) => {
 };
 
 const findDepartment = (id) => prisma.department.findUnique({ where: { id } });
+const findDepartments = (ids) => prisma.department.findMany({ where: { id: { in: ids } }, select: { id: true } });
+const findClassLevelsByGroup = (group) => prisma.classLevel.findMany({
+    where: { code: { startsWith: group } },
+    select: { id: true, code: true },
+    orderBy: { code: "asc" },
+});
 const findTeacherSubjectIds = async (userId) => {
     const staff = await prisma.staff.findUnique({ where: { userId }, select: { id: true } });
     if (!staff) return [];
@@ -105,8 +153,11 @@ const deleteSubject = async (id) => {
     });
 };
 
+const deactivateSubject = (id) => prisma.subject.update({ where: { id }, data: { isActive: false } });
+
 module.exports = {
     createSubject,
+    createSubjectWithTargets,
     findAllSubjects,
     findSubjectById,
     findSubjectByName,
@@ -114,6 +165,9 @@ module.exports = {
     updateSubject,
     findSubjectUsage,
     findDepartment,
+    findDepartments,
+    findClassLevelsByGroup,
     findTeacherSubjectIds,
     deleteSubject,
+    deactivateSubject,
 };

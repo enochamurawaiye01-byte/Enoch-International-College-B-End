@@ -7,6 +7,7 @@ const AppError = require("../../core/errors/AppError");
 const { uploadFile, getFileUrl, removeStoredFile } = require("../../config/storage");
 const crypto = require("node:crypto");
 const { requiresDepartment } = require("../../core/utils/class-academic-rules");
+const { isSubjectAvailable } = require("../../core/utils/subject-availability");
 const { isTeachingAccount } = require("../../core/utils/teaching-roles");
 const isAssignedTeacherToStudent = async (user, student) => {
     if (!isTeachingAccount(user)) return false;
@@ -123,8 +124,11 @@ const createStudent = async (data, schoolId) => {
             const enrollment = await tx.enrollment.create({
                 data: { studentId: student.id, sessionId: session.id, termId: term.id, classId: schoolClass.id, departmentId: isSeniorSecondary ? selectedDepartmentIds[0] : null, status: "ACTIVE" },
             });
-            const classSubjects = await tx.classSubject.findMany({ where: { classId: schoolClass.id, subject: { isActive: true } }, include: { subject: true } });
-            const applicableSubjects = classSubjects.filter(({ subject }) => !isSeniorSecondary || !subject.departmentId || selectedDepartmentIds.includes(subject.departmentId));
+            const classSubjects = await tx.classSubject.findMany({
+                where: { classId: schoolClass.id, subject: { isActive: true } },
+                include: { subject: { include: { targets: { include: { classLevel: true } } } } }
+            });
+            const applicableSubjects = classSubjects.filter(({ subject }) => isSubjectAvailable(subject, schoolClass.classLevel.code, selectedDepartmentIds));
             if (applicableSubjects.length) await tx.studentSubjectEnrollment.createMany({
                 data: applicableSubjects.map(({ id }) => ({ enrollmentId: enrollment.id, classSubjectId: id })),
                 skipDuplicates: true,

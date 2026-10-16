@@ -8,6 +8,7 @@ const { hashNewPassword, normalizeQuery } = require("./user.utils");
 const { sendApprovalEmail, sendRejectionEmail, sendApprovalSms } = require("../../config/mailer");
 const generateRegistrationNumber = require("../../core/utils/generate-registration-number");
 const { requiresDepartment } = require("../../core/utils/class-academic-rules");
+const { isSubjectAvailable } = require("../../core/utils/subject-availability");
 const pushService = require("../notifications/push.service");
 
 const titleCaseFromEnum = (str) => {
@@ -186,9 +187,9 @@ const activateStudentApplication = async (target) => prisma.$transaction(async (
   });
   const classSubjects = await tx.classSubject.findMany({
     where: { classId: schoolClass.id, subject: { isActive: true } },
-    include: { subject: true },
+    include: { subject: { include: { targets: { include: { classLevel: true } } } } },
   });
-  const applicableSubjects = classSubjects.filter(({ subject }) => !isSeniorSecondary || !subject.departmentId || departmentIds.includes(subject.departmentId));
+  const applicableSubjects = classSubjects.filter(({ subject }) => isSubjectAvailable(subject, schoolClass.classLevel.code, departmentIds));
   if (applicableSubjects.length) {
     await tx.studentSubjectEnrollment.createMany({
       data: applicableSubjects.map(({ id }) => ({ enrollmentId: enrollment.id, classSubjectId: id })),

@@ -25,11 +25,20 @@ const withCurrentClassTeacher = (schoolClass) => ({
 
 // Create a class/arm
 const createClass = async (data) => {
-    return prisma.class.create({
-        data,
-        include: {
-            classLevel: true,
-        },
+    return prisma.$transaction(async (tx) => {
+        const schoolClass = await tx.class.create({ data, include: { classLevel: true } });
+        const targets = await tx.subjectTarget.findMany({
+            where: { classLevelId: schoolClass.classLevelId, subject: { isActive: true } },
+            select: { subjectId: true },
+        });
+        const subjectIds = [...new Set(targets.map(({ subjectId }) => subjectId))];
+        if (subjectIds.length) {
+            await tx.classSubject.createMany({
+                data: subjectIds.map((subjectId) => ({ classId: schoolClass.id, subjectId })),
+                skipDuplicates: true,
+            });
+        }
+        return schoolClass;
     });
 };
 

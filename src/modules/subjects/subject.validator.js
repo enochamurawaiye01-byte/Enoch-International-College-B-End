@@ -17,6 +17,9 @@ const createSubjectSchema = z
             .max(20, "Subject code is too long.")
             .transform((value) => value.toUpperCase()),
 
+        classGroup: z.enum(["JSS", "SSS"]),
+        departmentIds: z.array(z.string().uuid("Department ID must be valid.")).optional().default([]),
+
         description: z
             .string()
             .trim()
@@ -29,6 +32,13 @@ const createSubjectSchema = z
             .boolean()
             .optional()
             .default(true),
+    }).superRefine((data, context) => {
+        if (data.classGroup === "SSS" && !data.departmentIds.length) {
+            context.addIssue({ code: "custom", path: ["departmentIds"], message: "Select at least one senior secondary department." });
+        }
+        if (data.classGroup === "JSS" && data.departmentIds.length) {
+            context.addIssue({ code: "custom", path: ["departmentIds"], message: "Departments can only be selected for senior secondary subjects." });
+        }
     })
     .strict();
 
@@ -49,6 +59,9 @@ const updateSubjectSchema = z
             .max(20, "Subject code is too long.")
             .transform((value) => value.toUpperCase())
             .optional(),
+
+        classGroup: z.enum(["JSS", "SSS"]).optional(),
+        departmentIds: z.array(z.string().uuid("Department ID must be valid.")).optional(),
 
         description: z
             .string()

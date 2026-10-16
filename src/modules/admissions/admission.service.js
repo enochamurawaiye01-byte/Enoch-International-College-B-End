@@ -8,6 +8,7 @@ const repository = require("./admission.repository");
 const { generateApplicationNumber } = require("./admission.utils");
 const { sendApprovalEmail, sendRejectionEmail, studentApplicationApproved } = require("../../config/mailer");
 const { requiresDepartment } = require("../../core/utils/class-academic-rules");
+const { isSubjectAvailable } = require("../../core/utils/subject-availability");
 
 const getById = async (id) => {
 	const admission = await repository.findById(id);
@@ -195,9 +196,9 @@ const convertToStudent = async (id, data = {}) => {
 		});
 		const classSubjects = await tx.classSubject.findMany({
 			where: { classId: schoolClass.id, subject: { isActive: true } },
-			include: { subject: true }
+			include: { subject: { include: { targets: { include: { classLevel: true } } } } }
 		});
-		const applicableSubjects = classSubjects.filter(({ subject }) => !isSeniorSecondary || !subject.departmentId || subject.departmentId === departmentId);
+		const applicableSubjects = classSubjects.filter(({ subject }) => isSubjectAvailable(subject, schoolClass.classLevel.code, departmentId));
 		if (applicableSubjects.length) await tx.studentSubjectEnrollment.createMany({
 			data: applicableSubjects.map((classSubject) => ({ enrollmentId: enrollment.id, classSubjectId: classSubject.id })),
 			skipDuplicates: true

@@ -34,6 +34,7 @@ const seed = async () => {
     const departments = [
         { name: "Science", description: "Science department" },
         { name: "Commercial", description: "Commercial department" },
+        { name: "Arts", description: "Arts department" },
     ];
 
     for (const department of departments) {
@@ -44,7 +45,7 @@ const seed = async () => {
         });
     }
 
-    console.log("Departments created: Science, Commercial");
+    console.log("Departments created: Science, Commercial, Arts");
 };
 
 seed()

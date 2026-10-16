@@ -53,6 +53,7 @@ async function main() {
 
     const science = await prisma.department.upsert({ where: { name: "Science" }, update: {}, create: { name: "Science", description: "Science department" } });
     const commercial = await prisma.department.upsert({ where: { name: "Commercial" }, update: {}, create: { name: "Commercial", description: "Commercial department" } });
+    await prisma.department.upsert({ where: { name: "Arts" }, update: {}, create: { name: "Arts", description: "Arts department" } });
 
     const session = await prisma.academicSession.upsert({
         where: { schoolId_name: { schoolId: school.id, name: sessionName } },

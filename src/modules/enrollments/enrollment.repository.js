@@ -11,7 +11,10 @@ const findById = (id) => prisma.enrollment.findUnique({ where: { id }, include }
 const update = (id, data) => prisma.enrollment.update({ where: { id }, data, include });
 const updateStudentPlacement = (studentId, data) => prisma.student.update({ where: { id: studentId }, data });
 const findDepartment = (id) => prisma.department.findUnique({ where: { id } });
-const findClassSubjects = (classId) => prisma.classSubject.findMany({ where: { classId, subject: { isActive: true } }, include: { subject: true } });
+const findClassSubjects = (classId) => prisma.classSubject.findMany({
+    where: { classId, subject: { isActive: true } },
+    include: { subject: { include: { targets: { include: { classLevel: true } } } } }
+});
 const replaceSubjectRegistrations = (enrollmentId, classSubjectIds) => prisma.$transaction(async (tx) => {
 	await tx.studentSubjectEnrollment.deleteMany({ where: { enrollmentId } });
 	if (classSubjectIds.length) await tx.studentSubjectEnrollment.createMany({ data: classSubjectIds.map((classSubjectId) => ({ enrollmentId, classSubjectId })) });

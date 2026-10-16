@@ -30,7 +30,7 @@ const findEnrollmentRoster = (classId, sessionId, termId) => prisma.enrollment.f
 });
 const findClassSubject = (classId, subjectId) => prisma.classSubject.findUnique({
 	where: { classId_subjectId: { classId, subjectId } },
-	include: { subject: { include: { department: true } } }
+	include: { subject: { include: { department: true, targets: { include: { classLevel: true } } } } }
 });
 const findStaffByUserId = (userId) => prisma.staff.findUnique({ where: { userId }, select: { id: true, status: true } });
 const findTeacherAssignment = (filters) => prisma.teacherAssignment.findFirst({ where: filters, select: { id: true } });

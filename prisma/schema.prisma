@@ -891,6 +891,7 @@ model ClassLevel {
   description String?
 
   classes Class[]
+  subjectTargets SubjectTarget[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -944,6 +945,7 @@ model Department {
   description String?
 
   subjects Subject[]
+  subjectTargets SubjectTarget[]
   staff    Staff[]
   enrollments Enrollment[]
   studentApplicants Student[] @relation("StudentDesiredDepartment")
@@ -973,6 +975,7 @@ model Subject {
   isActive     Boolean @default(true)
 
   classSubjects      ClassSubject[]
+  targets            SubjectTarget[]
   teacherAssignments TeacherAssignment[]
   assessments        Assessment[]
   lessons            Lesson[]
@@ -987,6 +990,21 @@ model Subject {
 
   @@index([departmentId])
   @@index([isActive])
+}
+
+model SubjectTarget {
+  id           String     @id @default(uuid())
+  subjectId    String
+  classLevelId String
+  departmentId String?
+
+  subject    Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  classLevel ClassLevel @relation(fields: [classLevelId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, classLevelId, departmentId])
+  @@index([classLevelId, departmentId])
+  @@index([subjectId])
 }
 
 model Score {

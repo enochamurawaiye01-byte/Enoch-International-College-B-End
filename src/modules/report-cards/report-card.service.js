@@ -3,7 +3,7 @@ const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./report-card.repository");
 const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGURATION, gradeFor, sum, reportCardPublicationState, reportCardPortalPublicationUpdate } = require("./report-card.utils");
 const { prisma } = require("../../config/database");
-const { requiresDepartment } = require("../../core/utils/class-academic-rules");
+const { isSubjectAvailable } = require("../../core/utils/subject-availability");
 const { hasPermission } = require("../../core/middleware/authorization.middleware");
 const { isTeachingAccount } = require("../../core/utils/teaching-roles");
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"]);
@@ -72,12 +72,11 @@ const termReferences = async ({ classId, subjectId, sessionId, termId }) => {
 };
 
 const hasSubjectRegistration = (enrollment, classSubject) => {
+	if (!isSubjectAvailable(classSubject.subject, enrollment.class.classLevel.code, enrollment.departmentId)) return false;
 	if (enrollment.subjectRegistrations.length) {
 		return enrollment.subjectRegistrations.some((registration) => registration.classSubjectId === classSubject.id);
 	}
-	const isSeniorSecondary = requiresDepartment(enrollment.class.classLevel.code);
-	if (!isSeniorSecondary) return true;
-	return classSubject.subject.departmentId == null || classSubject.subject.departmentId === enrollment.departmentId;
+	return true;
 };
 
 const getEntrySheet = async (query, user) => {
@@ -349,10 +348,14 @@ const assertReportComplete = async (tx, report) => {
 		include: { class: { include: { classLevel: true } }, subjectRegistrations: { include: { classSubject: true } } },
 	});
 	if (!enrollment || enrollment.status !== "ACTIVE") throw new AppError("An active enrollment is required before publishing this result.", 409, "STUDENT_ENROLLMENT_REQUIRED");
-	const classSubjects = await tx.classSubject.findMany({ where: { classId: enrollment.classId, subject: { isActive: true } }, include: { subject: true } });
+	const classSubjects = await tx.classSubject.findMany({
+		where: { classId: enrollment.classId, subject: { isActive: true } },
+		include: { subject: { include: { targets: { include: { classLevel: true } } } } }
+	});
 	const expectedSubjectIds = enrollment.subjectRegistrations.length
 		? enrollment.subjectRegistrations.map((registration) => registration.classSubjectId)
-		: classSubjects.filter(({ subject }) => !requiresDepartment(enrollment.class.classLevel.code) || !subject.departmentId || subject.departmentId === enrollment.departmentId).map(({ id }) => id);
+			.filter((id) => classSubjects.some((item) => item.id === id && isSubjectAvailable(item.subject, enrollment.class.classLevel.code, enrollment.departmentId)))
+		: classSubjects.filter(({ subject }) => isSubjectAvailable(subject, enrollment.class.classLevel.code, enrollment.departmentId)).map(({ id }) => id);
 	const completedIds = new Set(report.entries.map((entry) => classSubjects.find((classSubject) => classSubject.subjectId === entry.subjectId)?.id).filter(Boolean));
 	const missingCount = expectedSubjectIds.filter((id) => !completedIds.has(id)).length;
 	if (!expectedSubjectIds.length || missingCount) throw new AppError("Every registered subject must have a result before publishing.", 409, "REPORT_CARD_INCOMPLETE", { missingSubjects: missingCount });
