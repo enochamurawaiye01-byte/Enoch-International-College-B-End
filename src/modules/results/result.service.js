@@ -22,7 +22,8 @@ const getById = async (id, user) => {
 	}
 	if (isTeachingAccount(user)) {
 		const staff = await prisma.staff.findUnique({ where: { userId: user.userId }, select: { id: true } });
-		const assignment = staff ? await prisma.teacherAssignment.findFirst({
+		const [assignment, classTeacherAssignment] = staff ? await Promise.all([
+			prisma.teacherAssignment.findFirst({
 			where: {
 				staffId: staff.id,
 				classId: result.exam.classId,
@@ -30,8 +31,17 @@ const getById = async (id, user) => {
 				AND: [{ OR: [{ sessionId: null }, { sessionId: result.sessionId }] }, { OR: [{ termId: null }, { termId: result.termId }] }]
 			},
 			select: { id: true }
-		}) : null;
-		if (!assignment) throw new AppError("You are not assigned to this result's class and subject.", 403, "RESULT_ACCESS_DENIED");
+			}),
+			prisma.classTeacherAssignment.findFirst({
+				where: {
+					staffId: staff.id,
+					classId: result.exam.classId,
+					session: { isActive: true, ...(user.schoolId ? { schoolId: user.schoolId } : {}) }
+				},
+				select: { id: true }
+			})
+		]) : [null, null];
+		if (!assignment && !classTeacherAssignment) throw new AppError("You are not assigned to this result's class and subject.", 403, "RESULT_ACCESS_DENIED");
 	}
 	if (user && user.role !== "STUDENT" && !isTeachingAccount(user)) {
 		if (!await hasPermission(user, "results:view")) throw new AppError("You cannot view this result.", 403, "RESULT_ACCESS_DENIED");

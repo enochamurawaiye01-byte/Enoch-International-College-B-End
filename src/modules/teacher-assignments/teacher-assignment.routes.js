@@ -8,11 +8,14 @@ const { TEACHING_ROLES } = require("../../core/utils/teaching-roles");
 
 const router = express.Router();
 router.use(authenticate);
-router.get("/class-teachers", requireRoles("SUPER_ADMIN", "ADMIN", ...TEACHING_ROLES), controller.getClassTeachers);
+const requireAssignmentReadAccess = (req, res, next) => TEACHING_ROLES.has(req.user?.role)
+	? next()
+	: requireRoles("SUPER_ADMIN", "ADMIN")(req, res, next);
+router.get("/class-teachers", requireAssignmentReadAccess, controller.getClassTeachers);
 router.post("/class-teachers", requireRoles("SUPER_ADMIN", "ADMIN"), validate(classTeacherAssignmentSchema), controller.assignClassTeacher);
 router.delete("/class-teachers/:id", requireRoles("SUPER_ADMIN", "ADMIN"), controller.removeClassTeacher);
 router.post("/", requireRoles("SUPER_ADMIN", "ADMIN"), validate(createTeacherAssignmentSchema), controller.create);
-router.get("/", requireRoles("SUPER_ADMIN", "ADMIN", ...TEACHING_ROLES), controller.getAll);
-router.get("/:id", requireRoles("SUPER_ADMIN", "ADMIN", ...TEACHING_ROLES), controller.getById);
+router.get("/", requireAssignmentReadAccess, controller.getAll);
+router.get("/:id", requireAssignmentReadAccess, controller.getById);
 router.delete("/:id", requireRoles("SUPER_ADMIN", "ADMIN"), controller.remove);
 module.exports = router;

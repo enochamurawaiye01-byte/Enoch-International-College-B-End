@@ -48,7 +48,13 @@ const assertTeacherAssignment = async (user, { classId, subjectId, sessionId, te
 			{ OR: [{ termId: null }, { termId }] }
 		]
 	});
-	if (!assignment) throw new AppError("You are not assigned to this class and subject for the selected session and term.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
+	const classTeacherAssignment = assignment ? null : await repository.findClassTeacherAssignment({
+		staffId: staff.id,
+		classId,
+		sessionId,
+		session: { isActive: true, ...(user.schoolId ? { schoolId: user.schoolId } : {}) }
+	});
+	if (!assignment && !classTeacherAssignment) throw new AppError("You are not assigned to this class and subject for the selected session and term.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
 	return staff.id;
 };
 
@@ -227,6 +233,13 @@ const getById = async (id, user) => {
 	if (user.role === "STUDENT" && !report.studentPublished) throw new AppError("This report card has not been published to the student portal.", 403, "REPORT_CARD_NOT_PUBLISHED");
 	if (isTeachingAccount(user)) {
 		const staff = await repository.findStaffByUserId(user.userId);
+		const classTeacherAssignment = staff ? await repository.findClassTeacherAssignment({
+			staffId: staff.id,
+			classId: report.classId,
+			sessionId: report.sessionId,
+			session: { isActive: true, ...(user.schoolId ? { schoolId: user.schoolId } : {}) }
+		}) : null;
+		if (classTeacherAssignment) return report;
 		const allowedEntries = staff ? await Promise.all(report.entries.map(async (entry) => Boolean(await repository.findTeacherAssignment({
 			staffId: staff.id, classId: report.classId, subjectId: entry.subjectId,
 			AND: [{ OR: [{ sessionId: null }, { sessionId: report.sessionId }] }, { OR: [{ termId: null }, { termId: report.termId }] }]
@@ -419,32 +432,52 @@ const getAll = async (query, user) => {
 		where.studentPublished = true;
 	}
 	let assignments = [];
+	let classTeacherAssignments = [];
 	if (isTeachingAccount(user)) {
 		const staff = await repository.findStaffByUserId(user.userId);
 		if (!staff) return [];
-		assignments = await prisma.teacherAssignment.findMany({
-			where: {
-				staffId: staff.id,
-				...(query.classId ? { classId: query.classId } : {}),
-				...(query.subjectId ? { subjectId: query.subjectId } : {}),
-				...(query.sessionId ? { OR: [{ sessionId: null }, { sessionId: query.sessionId }] } : {}),
-				...(query.termId ? { OR: [{ termId: null }, { termId: query.termId }] } : {})
-			},
-			select: { classId: true, subjectId: true, sessionId: true, termId: true }
-		});
-		if (!assignments.length) return [];
-		where.OR = assignments.map((assignment) => ({
-			classId: assignment.classId,
-			...(assignment.sessionId ? { sessionId: assignment.sessionId } : {}),
-			...(assignment.termId ? { termId: assignment.termId } : {}),
-			entries: { some: { subjectId: assignment.subjectId } }
-		}));
+		[assignments, classTeacherAssignments] = await Promise.all([
+			prisma.teacherAssignment.findMany({
+				where: {
+					staffId: staff.id,
+					...(query.classId ? { classId: query.classId } : {}),
+					...(query.subjectId ? { subjectId: query.subjectId } : {}),
+					...(query.sessionId ? { OR: [{ sessionId: null }, { sessionId: query.sessionId }] } : {}),
+					...(query.termId ? { OR: [{ termId: null }, { termId: query.termId }] } : {})
+				},
+				select: { classId: true, subjectId: true, sessionId: true, termId: true }
+			}),
+			prisma.classTeacherAssignment.findMany({
+				where: {
+					staffId: staff.id,
+					...(query.classId ? { classId: query.classId } : {}),
+					...(query.sessionId ? { sessionId: query.sessionId } : {}),
+					session: { isActive: true, ...(user.schoolId ? { schoolId: user.schoolId } : {}) }
+				},
+				select: { classId: true, sessionId: true }
+			})
+		]);
+		if (!assignments.length && !classTeacherAssignments.length) return [];
+		where.OR = [
+			...assignments.map((assignment) => ({
+				classId: assignment.classId,
+				...(assignment.sessionId ? { sessionId: assignment.sessionId } : {}),
+				...(assignment.termId ? { termId: assignment.termId } : {}),
+				entries: { some: { subjectId: assignment.subjectId } }
+			})),
+			...classTeacherAssignments.map((assignment) => ({
+				classId: assignment.classId,
+				sessionId: assignment.sessionId
+			}))
+		];
 	}
 	const reports = await repository.findAll(where);
 	if (!isTeachingAccount(user)) return reports;
 	return reports.map((report) => ({
 		...report,
-		entries: report.entries.filter((entry) => assignments.some((assignment) =>
+		entries: classTeacherAssignments.some((assignment) =>
+			assignment.classId === report.classId && assignment.sessionId === report.sessionId
+		) ? report.entries : report.entries.filter((entry) => assignments.some((assignment) =>
 			assignment.classId === report.classId && assignment.subjectId === entry.subjectId
 			&& (!assignment.sessionId || assignment.sessionId === report.sessionId)
 			&& (!assignment.termId || assignment.termId === report.termId)

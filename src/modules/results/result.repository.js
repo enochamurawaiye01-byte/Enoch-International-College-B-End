@@ -17,12 +17,26 @@ const findForTeacher = async (userId, filters = {}) => {
 		},
 		select: { classId: true, subjectId: true, sessionId: true, termId: true }
 	});
-	if (!assignments.length) return [];
-	return prisma.result.findMany({ where: { ...filters, OR: assignments.map((assignment) => ({
-		exam: { classId: assignment.classId, subjectId: assignment.subjectId },
-		...(assignment.sessionId ? { sessionId: assignment.sessionId } : {}),
-		...(assignment.termId ? { termId: assignment.termId } : {})
-	})) }, include, orderBy: { generatedAt: "desc" } });
+	const classTeacherAssignments = await prisma.classTeacherAssignment.findMany({
+		where: {
+			staffId: staff.id,
+			session: { isActive: true },
+			...(filters.sessionId ? { sessionId: filters.sessionId } : {})
+		},
+		select: { classId: true, sessionId: true }
+	});
+	if (!assignments.length && !classTeacherAssignments.length) return [];
+	return prisma.result.findMany({ where: { ...filters, OR: [
+		...assignments.map((assignment) => ({
+			exam: { classId: assignment.classId, subjectId: assignment.subjectId },
+			...(assignment.sessionId ? { sessionId: assignment.sessionId } : {}),
+			...(assignment.termId ? { termId: assignment.termId } : {})
+		})),
+		...classTeacherAssignments.map((assignment) => ({
+			exam: { classId: assignment.classId },
+			sessionId: assignment.sessionId
+		}))
+	] }, include, orderBy: { generatedAt: "desc" } });
 };
 const update = (id, data) => prisma.result.update({ where: { id }, data, include });
 module.exports = { findById, findStudentByUserId, findForStudent, findAll, findForTeacher, update };
