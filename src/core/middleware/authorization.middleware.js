@@ -85,7 +85,8 @@ const hasTeachingDashboardAccess = (user, permissionKey, req) => {
   if (permissionKey !== "dashboards:view" || !TEACHING_ROLES.has(user.role)
       || !req || !["GET", "HEAD"].includes((req.method || "").toUpperCase())) return false;
   const segments = getResourceSegments(req, "dashboard");
-  return segments?.length === 1 && segments[0] === "teacher";
+  return segments?.length === 1 && segments[0] === "teacher"
+    || segments?.length === 2 && segments[0] === "teacher" && segments[1] === "activity";
 };
 
 const hasTeachingSelfReadAccess = (user, permissionKey, req) => {

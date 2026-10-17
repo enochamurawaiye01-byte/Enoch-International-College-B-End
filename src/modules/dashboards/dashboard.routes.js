@@ -43,6 +43,41 @@ router.get("/teacher", requireRoles(...TEACHING_ROLES, "STAFF"), async (req, res
     } catch (error) { next(error); }
 });
 
+router.get("/teacher/activity", requireRoles(...TEACHING_ROLES), async (req, res, next) => {
+    try {
+        const classIds = await classRepository.findTeacherClassIds(req.user.userId, req.user.schoolId, req.user.role);
+        if (!classIds.length) return res.json({ success: true, data: { items: [] } });
+
+        const [assignments, lessons, exams] = await Promise.all([
+            prisma.assignment.findMany({
+                where: { classId: { in: classIds }, session: { isActive: true }, status: { in: ["PUBLISHED", "CLOSED"] } },
+                select: { title: true, updatedAt: true, class: { select: { name: true } } },
+                orderBy: { updatedAt: "desc" },
+                take: 5,
+            }),
+            prisma.lesson.findMany({
+                where: { classId: { in: classIds }, session: { isActive: true }, status: { in: ["PUBLISHED", "COMPLETED"] } },
+                select: { title: true, updatedAt: true, class: { select: { name: true } } },
+                orderBy: { updatedAt: "desc" },
+                take: 5,
+            }),
+            prisma.exam.findMany({
+                where: { classId: { in: classIds }, session: { isActive: true }, status: { in: ["PUBLISHED", "ONGOING", "CLOSED", "MARKED"] } },
+                select: { title: true, updatedAt: true, class: { select: { name: true } } },
+                orderBy: { updatedAt: "desc" },
+                take: 5,
+            }),
+        ]);
+        const items = [
+            ...assignments.map((item) => ({ ...item, type: "Assignment" })),
+            ...lessons.map((item) => ({ ...item, type: "Lesson" })),
+            ...exams.map((item) => ({ ...item, type: "Examination" })),
+        ].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).slice(0, 5);
+
+        return res.json({ success: true, data: { items } });
+    } catch (error) { next(error); }
+});
+
 router.get("/student", requireRoles("STUDENT"), async (req, res, next) => {
     try {
         const student = await prisma.student.findUnique({ where: { userId: req.user.userId } });

@@ -195,6 +195,16 @@ test("class teacher access is assignment-scoped", async (t) => {
       assert.equal(await hasPermission(
         { userId: "teacher-user", role: "CLASS_TEACHER" },
         "dashboards:view",
+        { method: "GET", originalUrl: "/api/dashboard/teacher/activity" }
+      ), true);
+      assert.equal(await hasPermission(
+        { userId: "teacher-user", role: "CLASS_TEACHER" },
+        "dashboards:view",
+        { method: "GET", originalUrl: "/api/dashboard/teacher/other" }
+      ), false);
+      assert.equal(await hasPermission(
+        { userId: "teacher-user", role: "CLASS_TEACHER" },
+        "dashboards:view",
         { method: "GET", originalUrl: "/api/dashboard/student" }
       ), false);
       assert.equal(await hasPermission(
