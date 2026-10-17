@@ -1,0 +1,2 @@
+ALTER TABLE "Subject"
+ALTER COLUMN "code" DROP NOT NULL;

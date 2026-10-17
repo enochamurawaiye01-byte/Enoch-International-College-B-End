@@ -73,15 +73,21 @@ const updateSubject = async (req, res, next) => {
 // Delete subject
 const deleteSubject = async (req, res, next) => {
     try {
-        const result = await subjectService.deleteSubject(
-            req.params.id
-        );
+        await subjectService.deleteSubject(req.params.id);
 
         return res.status(200).json({
             success: true,
-            message: result.archived ? "Subject is in use, so it was archived and removed from future selection." : "Subject deleted successfully.",
-            data: result,
+            message: "Subject deleted successfully.",
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const archiveSubject = async (req, res, next) => {
+    try {
+        const subject = await subjectService.archiveSubject(req.params.id);
+        return res.status(200).json({ success: true, message: "Subject archived; historical records are preserved.", data: subject });
     } catch (error) {
         next(error);
     }
@@ -93,4 +99,5 @@ module.exports = {
     getSubjectById,
     updateSubject,
     deleteSubject,
+    archiveSubject,
 };

@@ -7,7 +7,7 @@ const { SUBJECT_ERRORS } = require("./subject.constants");
 // Create subject
 const createSubject = async (data) => {
     const name = data.name.trim();
-    const code = data.code.trim().toUpperCase();
+    const code = data.code?.trim().toUpperCase() || null;
     const classLevels = await subjectRepository.findClassLevelsByGroup(data.classGroup);
     if (!classLevels.length) throw new AppError(`No ${data.classGroup} class levels are configured.`, 409, "SUBJECT_CLASS_LEVELS_NOT_CONFIGURED");
     const departmentIds = data.classGroup === "SSS" ? [...new Set(data.departmentIds)] : [];
@@ -29,8 +29,7 @@ const createSubject = async (data) => {
     }
 
     // Check duplicate subject code
-    const existingCode =
-        await subjectRepository.findSubjectByCode(code);
+    const existingCode = code ? await subjectRepository.findSubjectByCode(code) : null;
 
     if (existingCode) {
         throw new AppError(
@@ -148,11 +147,10 @@ const updateSubject = async (id, data) => {
 
     // Update code
     if (data.code !== undefined) {
-        const code = data.code.trim().toUpperCase();
+        const code = data.code?.trim().toUpperCase() || null;
 
-        if (code !== existingSubject.code) {
-            const duplicateCode =
-                await subjectRepository.findSubjectByCode(code);
+        if (code && code !== existingSubject.code) {
+            const duplicateCode = await subjectRepository.findSubjectByCode(code);
 
             if (
                 duplicateCode &&
@@ -193,35 +191,27 @@ const updateSubject = async (id, data) => {
 
 // Delete subject
 const deleteSubject = async (id) => {
-    const existingSubject =
-        await subjectRepository.findSubjectById(id);
-
-    if (!existingSubject) {
+    const result = await subjectRepository.deleteSubjectSafely(id);
+    if (!result.found) {
         throw new AppError(
             SUBJECT_ERRORS.SUBJECT_NOT_FOUND,
             404,
             "SUBJECT_NOT_FOUND"
         );
     }
+    if (result.inUse) throw new AppError(
+        "This subject is linked to class registrations or academic records. Archive it instead to preserve history.",
+        409,
+        "SUBJECT_IN_USE"
+    );
+    return { deleted: true };
+};
 
-    const usage =
-        await subjectRepository.findSubjectUsage(id);
-
-    const counts = usage?._count;
-
-    const isInUse =
-        counts &&
-        Object.values(counts).some(
-            (count) => count > 0
-        );
-
-    if (isInUse) {
-        await subjectRepository.deactivateSubject(id);
-        return { archived: true };
-    }
-
-    await subjectRepository.deleteSubject(id);
-    return { archived: false };
+const archiveSubject = async (id) => {
+    const existingSubject = await subjectRepository.findSubjectById(id);
+    if (!existingSubject) throw new AppError(SUBJECT_ERRORS.SUBJECT_NOT_FOUND, 404, "SUBJECT_NOT_FOUND");
+    if (!existingSubject.isActive) return existingSubject;
+    return subjectRepository.deactivateSubject(id);
 };
 
 module.exports = {
@@ -230,4 +220,5 @@ module.exports = {
     getSubjectById,
     updateSubject,
     deleteSubject,
+    archiveSubject,
 };

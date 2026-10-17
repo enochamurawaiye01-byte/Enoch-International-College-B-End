@@ -1,7 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { isSubjectAvailable } = require("../../src/core/utils/subject-availability");
-const { createSubjectSchema } = require("../../src/modules/subjects/subject.validator");
+const { createSubjectSchema, updateSubjectSchema } = require("../../src/modules/subjects/subject.validator");
+const subjectRepository = require("../../src/modules/subjects/subject.repository");
+const subjectService = require("../../src/modules/subjects/subject.service");
 
 test("subject availability matches JSS and selected SSS departments", () => {
   const subject = {
@@ -21,10 +23,41 @@ test("subject availability matches JSS and selected SSS departments", () => {
 });
 
 test("subject creation requires departments only for SSS", () => {
-  const common = { name: "Mathematics", code: "MAT", description: "" };
+  const common = { name: "Mathematics", description: "" };
 
   assert.equal(createSubjectSchema.safeParse({ ...common, classGroup: "JSS" }).success, true);
+  assert.equal(createSubjectSchema.safeParse({ ...common, code: "", classGroup: "JSS" }).success, true);
+  assert.equal(createSubjectSchema.safeParse({ ...common, code: null, classGroup: "JSS" }).success, true);
+  assert.equal(createSubjectSchema.safeParse({ ...common, code: "MAT", classGroup: "JSS" }).success, true);
   assert.equal(createSubjectSchema.safeParse({ ...common, classGroup: "SSS", departmentIds: ["123e4567-e89b-12d3-a456-426614174000"] }).success, true);
   assert.equal(createSubjectSchema.safeParse({ ...common, classGroup: "SSS" }).success, false);
   assert.equal(createSubjectSchema.safeParse({ ...common, classGroup: "JSS", departmentIds: ["123e4567-e89b-12d3-a456-426614174000"] }).success, false);
+  assert.equal(updateSubjectSchema.safeParse({ code: "" }).success, true);
+  assert.equal(updateSubjectSchema.safeParse({ code: null }).success, true);
+});
+
+test("subject deletion rejects subjects with academic history", async () => {
+  const originalDelete = subjectRepository.deleteSubjectSafely;
+  subjectRepository.deleteSubjectSafely = async () => ({ found: true, inUse: true });
+
+  try {
+    await assert.rejects(subjectService.deleteSubject("subject-id"), (error) => {
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "SUBJECT_IN_USE");
+      return true;
+    });
+  } finally {
+    subjectRepository.deleteSubjectSafely = originalDelete;
+  }
+});
+
+test("subject deletion succeeds when the repository confirms no dependencies", async () => {
+  const originalDelete = subjectRepository.deleteSubjectSafely;
+  subjectRepository.deleteSubjectSafely = async () => ({ found: true, inUse: false });
+
+  try {
+    assert.deepEqual(await subjectService.deleteSubject("subject-id"), { deleted: true });
+  } finally {
+    subjectRepository.deleteSubjectSafely = originalDelete;
+  }
 });

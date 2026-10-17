@@ -118,11 +118,41 @@ const findSubjectUsage = async (id) => {
                     scores: true,
                     reportCardEntries: true,
                     timetableSlots: true,
+                    lessons: true,
+                    assignments: true,
                 },
             },
         },
     });
 };
+
+const deleteSubjectSafely = async (id) => prisma.$transaction(async (tx) => {
+    const subject = await tx.subject.findUnique({
+        where: { id },
+        select: {
+            _count: {
+                select: {
+                    teacherAssignments: true,
+                    assessments: true,
+                    exams: true,
+                    scores: true,
+                    reportCardEntries: true,
+                    timetableSlots: true,
+                    lessons: true,
+                    assignments: true,
+                },
+            },
+        },
+    });
+    if (!subject) return { found: false, inUse: false };
+    const enrollmentCount = await tx.studentSubjectEnrollment.count({
+        where: { classSubject: { subjectId: id } },
+    });
+    const inUse = enrollmentCount > 0 || Object.values(subject._count).some((count) => count > 0);
+    if (inUse) return { found: true, inUse: true };
+    await tx.subject.delete({ where: { id } });
+    return { found: true, inUse: false };
+}, { isolationLevel: "Serializable" });
 
 const findDepartment = (id) => prisma.department.findUnique({ where: { id } });
 const findDepartments = (ids) => prisma.department.findMany({ where: { id: { in: ids } }, select: { id: true } });
@@ -164,6 +194,7 @@ module.exports = {
     findSubjectByCode,
     updateSubject,
     findSubjectUsage,
+    deleteSubjectSafely,
     findDepartment,
     findDepartments,
     findClassLevelsByGroup,

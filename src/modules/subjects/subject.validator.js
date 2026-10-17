@@ -10,12 +10,13 @@ const createSubjectSchema = z
             .min(2, "Subject name is required.")
             .max(100, "Subject name is too long."),
 
-        code: z
-            .string()
-            .trim()
-            .min(2, "Subject code is required.")
-            .max(20, "Subject code is too long.")
-            .transform((value) => value.toUpperCase()),
+        code: z.preprocess(
+            (value) => typeof value === "string" && !value.trim() ? null : value,
+            z.string().trim().min(2, "Subject code must contain at least two characters.")
+                .max(20, "Subject code is too long.")
+                .transform((value) => value.toUpperCase())
+                .nullable()
+        ).optional(),
 
         classGroup: z.enum(["JSS", "SSS"]),
         departmentIds: z.array(z.string().uuid("Department ID must be valid.")).optional().default([]),
@@ -52,13 +53,13 @@ const updateSubjectSchema = z
             .max(100, "Subject name is too long.")
             .optional(),
 
-        code: z
-            .string()
-            .trim()
-            .min(2, "Subject code is required.")
-            .max(20, "Subject code is too long.")
-            .transform((value) => value.toUpperCase())
-            .optional(),
+        code: z.preprocess(
+            (value) => typeof value === "string" && !value.trim() ? null : value,
+            z.string().trim().min(2, "Subject code must contain at least two characters.")
+                .max(20, "Subject code is too long.")
+                .transform((value) => value.toUpperCase())
+                .nullable()
+        ).optional(),
 
         classGroup: z.enum(["JSS", "SSS"]).optional(),
         departmentIds: z.array(z.string().uuid("Department ID must be valid.")).optional(),

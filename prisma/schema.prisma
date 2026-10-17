@@ -886,7 +886,7 @@ model ClassLevel {
   id String @id @default(uuid())
 
   name String @unique
-  code String @unique
+  code String? @unique
 
   description String?
 

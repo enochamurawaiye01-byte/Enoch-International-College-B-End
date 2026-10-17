@@ -6,6 +6,7 @@ const subjectController = require("./subject.controller");
 const validate = require("../../core/middleware/validation.middleware");
 const authenticate = require("../../core/middleware/auth.middleware");
 const { requireRoles } = require("../../core/middleware/authorization.middleware");
+const { auditLog } = require("../../core/middleware/audit.middleware");
 
 const {
     createSubjectSchema,
@@ -21,6 +22,7 @@ router.use(authenticate);
 router.post(
     "/",
     requireRoles("SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"),
+    auditLog("CREATE", "Subject"),
     validate(createSubjectSchema),
     subjectController.createSubject
 );
@@ -41,6 +43,7 @@ router.get(
 router.patch(
     "/:id",
     requireRoles("SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"),
+    auditLog("UPDATE", "Subject"),
     validate(updateSubjectSchema),
     subjectController.updateSubject
 );
@@ -49,7 +52,15 @@ router.patch(
 router.delete(
     "/:id",
     requireRoles("SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"),
+    auditLog("DELETE", "Subject"),
     subjectController.deleteSubject
+);
+
+router.patch(
+    "/:id/archive",
+    requireRoles("SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"),
+    auditLog("ARCHIVE", "Subject"),
+    subjectController.archiveSubject
 );
 
 module.exports = router;
