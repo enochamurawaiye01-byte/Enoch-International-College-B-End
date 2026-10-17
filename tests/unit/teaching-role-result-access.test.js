@@ -71,10 +71,8 @@ test("class teachers can enter results for subjects in their assigned class", as
   repository.findTerm = async () => ({ id: "term-1", sessionId: "session-1", type: "FIRST" });
   repository.findClassSubject = async () => ({ id: "class-subject-1", subject: { id: "subject-1", isActive: true } });
   repository.findConfiguration = async () => null;
-  repository.findCurrentClassRoster = async (classId, sessionId, termId) => {
+  repository.findCurrentClassRoster = async (classId) => {
     assert.equal(classId, "class-1");
-    assert.equal(sessionId, "session-1");
-    assert.equal(termId, "term-1");
     return [{
       id: "student-1",
       firstName: "Amina",
@@ -93,20 +91,7 @@ test("class teachers can enter results for subjects in their assigned class", as
       user: { email: "bola@example.test" },
     }];
   };
-  repository.findEnrollmentRoster = async () => [{
-    studentId: "student-1",
-    student: {
-      id: "student-1",
-      firstName: "Amina",
-      middleName: null,
-      lastName: "Example",
-      registrationNumber: "REG-001",
-      user: { email: "amina@example.test" },
-    },
-    class: { classLevel: { code: "JSS1" } },
-    departmentId: null,
-    subjectRegistrations: [{ classSubjectId: "different-subject" }],
-  }];
+  repository.findEnrollmentRoster = async () => assert.fail("JSS class-teacher roster must not query enrollments");
 
   try {
     const result = await reportCardService.getEntrySheet(

@@ -84,25 +84,32 @@ const getEntrySheet = async (query, user) => {
 	const staffId = await assertTeacherAssignment(user, { classId, subjectId, sessionId, termId });
 	const { schoolClass, session, term, classSubject } = await termReferences({ classId, subjectId, sessionId, termId });
 	const configuration = await getConfiguration(user);
-	const [enrollments, currentClassStudents] = await Promise.all([
-		repository.findEnrollmentRoster(classId, sessionId, termId),
-		repository.findCurrentClassRoster(classId, sessionId, termId)
-	]);
-	const enrollmentByStudent = new Map(enrollments.map((enrollment) => [enrollment.studentId, enrollment]));
-	const roster = currentClassStudents.map((student) => {
-		const enrollment = enrollmentByStudent.get(student.id);
-		return enrollment || {
-			studentId: student.id,
-			student,
-			class: schoolClass,
-			departmentId: student.desiredDepartmentId,
-			subjectRegistrations: []
-		};
-	});
+	const isClassTeacher = user?.role === "CLASS_TEACHER";
 	const isJuniorSecondary = schoolClass.classLevel.code.startsWith("JSS");
-	const eligible = isJuniorSecondary
-		? roster
-		: roster.filter((enrollment) => hasSubjectRegistration(enrollment, classSubject));
+	let eligible;
+	if (isClassTeacher && isJuniorSecondary) {
+		const students = await repository.findCurrentClassRoster(classId);
+		eligible = students.map((student) => ({ studentId: student.id, student }));
+	} else {
+		const [enrollments, currentClassStudents] = await Promise.all([
+			repository.findEnrollmentRoster(classId, sessionId, termId),
+			repository.findCurrentClassRoster(classId)
+		]);
+		const enrollmentByStudent = new Map(enrollments.map((enrollment) => [enrollment.studentId, enrollment]));
+		const roster = currentClassStudents.map((student) => {
+			const enrollment = enrollmentByStudent.get(student.id);
+			return enrollment || {
+				studentId: student.id,
+				student,
+				class: schoolClass,
+				departmentId: student.desiredDepartmentId,
+				subjectRegistrations: []
+			};
+		});
+		eligible = isJuniorSecondary
+			? roster
+			: roster.filter((enrollment) => hasSubjectRegistration(enrollment, classSubject));
+	}
 	const studentIds = eligible.map((enrollment) => enrollment.studentId);
 	const reports = studentIds.length ? await prisma.reportCard.findMany({
 		where: { studentId: { in: studentIds }, sessionId, termId },
