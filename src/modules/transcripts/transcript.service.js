@@ -1,7 +1,10 @@
 const repository = require("./transcript.repository");
 const { prisma } = require("../../config/database");
+const AppError = require("../../core/errors/AppError");
 const NotFoundError = require("../../core/errors/NotFoundError");
+const classRepository = require("../classes/class.repository");
 const { calculateGrade } = require("../results/result.service");
+const { isTeachingAccount } = require("../../core/utils/teaching-roles");
 
 const getCsv = async (query) => {
     const where = {};
@@ -13,12 +16,16 @@ const getCsv = async (query) => {
     return lines.join("\r\n");
 };
 
-const getStudentTranscript = async (studentId) => {
+const getStudentTranscript = async (studentId, user) => {
     const student = await prisma.student.findUnique({
         where: { id: studentId },
         include: {
             user: { select: { email: true, phoneNumber: true } },
             currentClass: true,
+            enrollments: {
+                where: { status: "ACTIVE", session: { isActive: true } },
+                select: { classId: true },
+            },
             results: {
                 include: {
                     exam: { include: { subject: true, class: { include: { classLevel: true } } } },
@@ -41,6 +48,16 @@ const getStudentTranscript = async (studentId) => {
 
     if (!student) {
         throw new NotFoundError("Student not found");
+    }
+    if (isTeachingAccount(user)) {
+        const assignedClassIds = await classRepository.findTeacherClassIds(user.userId, user.schoolId, user.role);
+        const transcriptClassIds = new Set([
+            student.currentClassId,
+            ...student.enrollments.map((enrollment) => enrollment.classId),
+        ].filter(Boolean));
+        if (!assignedClassIds.some((classId) => transcriptClassIds.has(classId))) {
+            throw new AppError("You can only review transcripts for students in your assigned classes.", 403, "TRANSCRIPT_ACCESS_DENIED");
+        }
     }
 
     let totalScoreSum = 0;

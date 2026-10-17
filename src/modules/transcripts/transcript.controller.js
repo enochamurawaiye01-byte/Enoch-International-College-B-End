@@ -11,7 +11,7 @@ const download = async (req, res, next) => {
 
 const getStudentTranscript = async (req, res, next) => {
 	try {
-		const data = await service.getStudentTranscript(req.params.studentId);
+		const data = await service.getStudentTranscript(req.params.studentId, req.user);
 		return res.status(200).json({ success: true, data });
 	} catch (error) {
 		next(error);

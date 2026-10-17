@@ -135,6 +135,13 @@ const hasTeachingResultRouteAccess = (user, permissionKey, req) => {
     && segments?.length === 2 && segments[0] === "term-entry" && segments[1] === "batch";
 };
 
+const hasTeachingTranscriptReadAccess = (user, permissionKey, req) => {
+  if (permissionKey !== "transcripts:view" || !TEACHING_ROLES.has(user.role)
+      || !req || !["GET", "HEAD"].includes((req.method || "").toUpperCase())) return false;
+  const segments = getResourceSegments(req, "transcripts");
+  return segments?.length === 2 && segments[0] === "student";
+};
+
 const hasTeachingAcademicCalendarAccess = async (user, permissionKey, req) => {
   if (!TEACHING_ROLES.has(user.role) || !req
       || !["GET", "HEAD"].includes((req.method || "").toUpperCase())) return false;
@@ -198,6 +205,7 @@ const hasPermission = async (user, permissionKey, req) => {
     || hasTeachingSelfReadAccess(user, permissionKey, req)
     || hasScopedReportCardReadAccess(user, permissionKey, req)
     || hasTeachingResultRouteAccess(user, permissionKey, req)
+    || hasTeachingTranscriptReadAccess(user, permissionKey, req)
     || await hasTeachingAcademicCalendarAccess(user, permissionKey, req)
     || hasTeachingAssignmentReadAccess(user, permissionKey, req)
     || await hasAssignedClassSubjectReadAccess(user, permissionKey, req)
