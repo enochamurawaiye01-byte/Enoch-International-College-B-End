@@ -28,6 +28,16 @@ const findEnrollmentRoster = (classId, sessionId, termId) => prisma.enrollment.f
 	include: { student: { include: { user: true, currentClass: { include: { classLevel: true } } } }, subjectRegistrations: { include: { classSubject: true } } },
 	orderBy: [{ student: { lastName: "asc" } }, { student: { firstName: "asc" } }]
 });
+const findCurrentClassRoster = (classId, sessionId, termId) => prisma.student.findMany({
+	where: {
+		currentClassId: classId,
+		currentSessionId: sessionId,
+		status: "ACTIVE",
+		enrollments: { none: { sessionId, termId } }
+	},
+	include: { user: true, currentClass: { include: { classLevel: true } } },
+	orderBy: [{ lastName: "asc" }, { firstName: "asc" }]
+});
 const findClassSubject = (classId, subjectId) => prisma.classSubject.findUnique({
 	where: { classId_subjectId: { classId, subjectId } },
 	include: { subject: { include: { department: true, targets: { include: { classLevel: true } } } } }
@@ -43,6 +53,6 @@ const saveConfiguration = (scopeKey, schoolId, updatedById, data) => prisma.asse
 });
 module.exports = {
 	findById, findExisting, findStudent, findEnrollment, findSession, findTerm, findSubject, upsert, update, findAll,
-	findClass, findEnrollmentRoster, findClassSubject, findStaffByUserId, findTeacherAssignment, findClassTeacherAssignment,
+	findClass, findEnrollmentRoster, findCurrentClassRoster, findClassSubject, findStaffByUserId, findTeacherAssignment, findClassTeacherAssignment,
 	findConfiguration, saveConfiguration
 };

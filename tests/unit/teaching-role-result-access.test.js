@@ -14,6 +14,7 @@ test("assignment-scoped result entry supports specific teaching roles", async (t
     "findClassSubject",
     "findConfiguration",
     "findEnrollmentRoster",
+    "findCurrentClassRoster",
   ];
   const original = Object.fromEntries(names.map((name) => [name, repository[name]]));
   repository.findStaffByUserId = async () => ({ id: "staff-1", status: "ACTIVE" });
@@ -30,6 +31,7 @@ test("assignment-scoped result entry supports specific teaching roles", async (t
   repository.findClassSubject = async () => ({ id: "class-subject-1", subject: { id: "subject-1", isActive: true } });
   repository.findConfiguration = async () => null;
   repository.findEnrollmentRoster = async () => [];
+  repository.findCurrentClassRoster = async () => [];
 
   try {
     const result = await reportCardService.getEntrySheet(
@@ -54,6 +56,7 @@ test("class teachers can enter results for subjects in their assigned class", as
     findClassSubject: repository.findClassSubject,
     findConfiguration: repository.findConfiguration,
     findEnrollmentRoster: repository.findEnrollmentRoster,
+    findCurrentClassRoster: repository.findCurrentClassRoster,
   };
   repository.findStaffByUserId = async () => ({ id: "staff-1", status: "ACTIVE" });
   repository.findTeacherAssignment = async () => null;
@@ -69,6 +72,16 @@ test("class teachers can enter results for subjects in their assigned class", as
   repository.findClassSubject = async () => ({ id: "class-subject-1", subject: { id: "subject-1", isActive: true } });
   repository.findConfiguration = async () => null;
   repository.findEnrollmentRoster = async () => [];
+  repository.findCurrentClassRoster = async () => [{
+    id: "student-1",
+    firstName: "Amina",
+    middleName: null,
+    lastName: "Example",
+    registrationNumber: "REG-001",
+    desiredDepartmentId: null,
+    user: { email: "amina@example.test" },
+    currentClass: { id: "class-1", classLevel: { code: "SS1" } },
+  }];
 
   try {
     const result = await reportCardService.getEntrySheet(
@@ -76,7 +89,9 @@ test("class teachers can enter results for subjects in their assigned class", as
         { userId: "teacher-user", role: "CLASS_TEACHER", schoolId: "school-1" }
     );
     assert.equal(result.teacherId, "staff-1");
-    assert.deepEqual(result.students, []);
+    assert.equal(result.students.length, 1);
+    assert.equal(result.students[0].id, "student-1");
+    assert.equal(result.students[0].fullName, "Amina Example");
   } finally {
     Object.entries(original).forEach(([name, value]) => { repository[name] = value; });
   }
