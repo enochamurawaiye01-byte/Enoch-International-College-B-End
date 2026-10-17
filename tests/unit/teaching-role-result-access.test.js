@@ -66,21 +66,46 @@ test("class teachers can enter results for subjects in their assigned class", as
     assert.equal(sessionId, "session-1");
     return { id: "class-teacher-assignment-1" };
   };
-  repository.findClass = async () => ({ id: "class-1", name: "SSS 1", isActive: true, classLevel: { code: "SS1" } });
+  repository.findClass = async () => ({ id: "class-1", name: "JSS 1", isActive: true, classLevel: { code: "JSS1" } });
   repository.findSession = async () => ({ id: "session-1" });
   repository.findTerm = async () => ({ id: "term-1", sessionId: "session-1", type: "FIRST" });
   repository.findClassSubject = async () => ({ id: "class-subject-1", subject: { id: "subject-1", isActive: true } });
   repository.findConfiguration = async () => null;
-  repository.findEnrollmentRoster = async () => [];
-  repository.findCurrentClassRoster = async () => [{
-    id: "student-1",
-    firstName: "Amina",
-    middleName: null,
-    lastName: "Example",
-    registrationNumber: "REG-001",
-    desiredDepartmentId: null,
-    user: { email: "amina@example.test" },
-    currentClass: { id: "class-1", classLevel: { code: "SS1" } },
+  repository.findCurrentClassRoster = async (classId, sessionId, termId) => {
+    assert.equal(classId, "class-1");
+    assert.equal(sessionId, "session-1");
+    assert.equal(termId, "term-1");
+    return [{
+      id: "student-1",
+      firstName: "Amina",
+      middleName: null,
+      lastName: "Example",
+      registrationNumber: "REG-001",
+      desiredDepartmentId: null,
+      user: { email: "amina@example.test" },
+    }, {
+      id: "student-2",
+      firstName: "Bola",
+      middleName: null,
+      lastName: "Example",
+      registrationNumber: "REG-002",
+      desiredDepartmentId: null,
+      user: { email: "bola@example.test" },
+    }];
+  };
+  repository.findEnrollmentRoster = async () => [{
+    studentId: "student-1",
+    student: {
+      id: "student-1",
+      firstName: "Amina",
+      middleName: null,
+      lastName: "Example",
+      registrationNumber: "REG-001",
+      user: { email: "amina@example.test" },
+    },
+    class: { classLevel: { code: "JSS1" } },
+    departmentId: null,
+    subjectRegistrations: [{ classSubjectId: "different-subject" }],
   }];
 
   try {
@@ -89,9 +114,10 @@ test("class teachers can enter results for subjects in their assigned class", as
         { userId: "teacher-user", role: "CLASS_TEACHER", schoolId: "school-1" }
     );
     assert.equal(result.teacherId, "staff-1");
-    assert.equal(result.students.length, 1);
+    assert.equal(result.students.length, 2);
     assert.equal(result.students[0].id, "student-1");
     assert.equal(result.students[0].fullName, "Amina Example");
+    assert.equal(result.students[1].id, "student-2");
   } finally {
     Object.entries(original).forEach(([name, value]) => { repository[name] = value; });
   }

@@ -28,10 +28,13 @@ const findEnrollmentRoster = (classId, sessionId, termId) => prisma.enrollment.f
 	include: { student: { include: { user: true, currentClass: { include: { classLevel: true } } } }, subjectRegistrations: { include: { classSubject: true } } },
 	orderBy: [{ student: { lastName: "asc" } }, { student: { firstName: "asc" } }]
 });
-const findCurrentClassRoster = (classId) => prisma.student.findMany({
+const findCurrentClassRoster = (classId, sessionId, termId) => prisma.student.findMany({
 	where: {
-		currentClassId: classId,
 		status: "ACTIVE",
+		OR: [
+			{ currentClassId: classId },
+			{ enrollments: { some: { classId, sessionId, termId, status: "ACTIVE" } } },
+		],
 	},
 	select: {
 		id: true,
@@ -41,7 +44,6 @@ const findCurrentClassRoster = (classId) => prisma.student.findMany({
 		registrationNumber: true,
 		desiredDepartmentId: true,
 		user: { select: { email: true } },
-		currentClass: { select: { classLevel: { select: { code: true } } } },
 	},
 	orderBy: [{ lastName: "asc" }, { firstName: "asc" }]
 });

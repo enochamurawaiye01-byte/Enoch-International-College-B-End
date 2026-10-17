@@ -86,20 +86,23 @@ const getEntrySheet = async (query, user) => {
 	const configuration = await getConfiguration(user);
 	const [enrollments, currentClassStudents] = await Promise.all([
 		repository.findEnrollmentRoster(classId, sessionId, termId),
-		repository.findCurrentClassRoster(classId)
+		repository.findCurrentClassRoster(classId, sessionId, termId)
 	]);
-	const enrolledStudentIds = new Set(enrollments.map(({ studentId }) => studentId));
-	const roster = [
-		...enrollments,
-		...currentClassStudents.filter((student) => !enrolledStudentIds.has(student.id)).map((student) => ({
+	const enrollmentByStudent = new Map(enrollments.map((enrollment) => [enrollment.studentId, enrollment]));
+	const roster = currentClassStudents.map((student) => {
+		const enrollment = enrollmentByStudent.get(student.id);
+		return enrollment || {
 			studentId: student.id,
 			student,
-			class: student.currentClass,
+			class: schoolClass,
 			departmentId: student.desiredDepartmentId,
 			subjectRegistrations: []
-		}))
-	];
-	const eligible = roster.filter((enrollment) => hasSubjectRegistration(enrollment, classSubject));
+		};
+	});
+	const isJuniorSecondary = schoolClass.classLevel.code.startsWith("JSS");
+	const eligible = isJuniorSecondary
+		? roster
+		: roster.filter((enrollment) => hasSubjectRegistration(enrollment, classSubject));
 	const studentIds = eligible.map((enrollment) => enrollment.studentId);
 	const reports = studentIds.length ? await prisma.reportCard.findMany({
 		where: { studentId: { in: studentIds }, sessionId, termId },
