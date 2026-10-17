@@ -86,11 +86,12 @@ const getEntrySheet = async (query, user) => {
 	const configuration = await getConfiguration(user);
 	const [enrollments, currentClassStudents] = await Promise.all([
 		repository.findEnrollmentRoster(classId, sessionId, termId),
-		repository.findCurrentClassRoster(classId, sessionId, termId)
+		repository.findCurrentClassRoster(classId)
 	]);
+	const enrolledStudentIds = new Set(enrollments.map(({ studentId }) => studentId));
 	const roster = [
 		...enrollments,
-		...currentClassStudents.map((student) => ({
+		...currentClassStudents.filter((student) => !enrolledStudentIds.has(student.id)).map((student) => ({
 			studentId: student.id,
 			student,
 			class: student.currentClass,
