@@ -11,6 +11,7 @@ const getModuleFromRequest = (req) => {
     const versionIndex = segments.findIndex((segment) => /^v\d+$/.test(segment));
     const apiIndex = segments.indexOf("api");
     const moduleIndex = versionIndex >= 0 ? versionIndex + 1 : apiIndex >= 0 ? apiIndex + 1 : 0;
+    if (segments[moduleIndex] === "settings" && segments[moduleIndex + 1] === "module-access") return null;
     const module = segments[moduleIndex];
     return MODULE_KEYS.includes(module) ? module : null;
 };
@@ -69,7 +70,7 @@ const authenticate = async (req, res, next) => {
             );
         }
 
-        if (!["SUPER_ADMIN", "ADMIN"].includes(session.user.role)) {
+        if (session.user.role !== "SUPER_ADMIN") {
             const module = getModuleFromRequest(req);
             if (module && session.user.schoolId) {
                 await moduleAccessService.assertAccess({ schoolId: session.user.schoolId, module });
@@ -111,4 +112,3 @@ const authenticate = async (req, res, next) => {
 };
 
 module.exports = authenticate;
-

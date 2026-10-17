@@ -24,6 +24,7 @@ const assertAccess = async ({ schoolId, module, classLevelId, hasOutstandingBala
         repository.get(schoolId, module, null),
     ]);
     const global = parse(globalRecord) || { module, classLevelId: null, enabled: true, blockUnpaid: false, startsAt: null, endsAt: null };
+    if (!global.enabled) throw new AppError(ERRORS.MODULE_DISABLED, 403, "MODULE_DISABLED");
     const policy = { ...global, ...(parse(specificRecord) || {}) };
     if (!policy.enabled) throw new AppError(ERRORS.MODULE_DISABLED, 403, "MODULE_DISABLED");
     const time = now.toTimeString().slice(0, 5);

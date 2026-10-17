@@ -17,3 +17,26 @@ test("module access lists every unconfigured module as enabled", async () => {
     repository.findAll = originalFindAll;
   }
 });
+
+test("disabled module policies reject API access", async () => {
+  const originalGet = repository.get;
+  repository.get = async (_schoolId, module, classLevelId) => {
+    if (module !== "subjects") return null;
+    return {
+      value: JSON.stringify({
+        module,
+        classLevelId: classLevelId || null,
+        enabled: classLevelId ? true : false,
+      }),
+    };
+  };
+
+  try {
+    await assert.rejects(
+      service.assertAccess({ schoolId: "test-school", module: "subjects", classLevelId: "class-level-id" }),
+      (error) => error.code === "MODULE_DISABLED" && error.statusCode === 403
+    );
+  } finally {
+    repository.get = originalGet;
+  }
+});

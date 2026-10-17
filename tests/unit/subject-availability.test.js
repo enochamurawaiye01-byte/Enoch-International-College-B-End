@@ -61,3 +61,24 @@ test("subject deletion succeeds when the repository confirms no dependencies", a
     subjectRepository.deleteSubjectSafely = originalDelete;
   }
 });
+
+test("creating a subject without a supplied code generates a database-compatible code", async () => {
+  const names = [
+    "findClassLevelsByGroup",
+    "findSubjectByName",
+    "findSubjectByCode",
+    "createSubjectWithTargets",
+  ];
+  const originals = Object.fromEntries(names.map((name) => [name, subjectRepository[name]]));
+  subjectRepository.findClassLevelsByGroup = async () => [{ id: "jss1-level" }];
+  subjectRepository.findSubjectByName = async () => null;
+  subjectRepository.findSubjectByCode = async () => null;
+  subjectRepository.createSubjectWithTargets = async (data) => data;
+
+  try {
+    const result = await subjectService.createSubject({ name: "Mathematics", classGroup: "JSS" });
+    assert.match(result.code, /^AUTO-[A-F0-9]{12}$/);
+  } finally {
+    Object.entries(originals).forEach(([name, method]) => { subjectRepository[name] = method; });
+  }
+});

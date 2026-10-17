@@ -1,5 +1,6 @@
 // Subject service
 const AppError = require("../../core/errors/AppError");
+const { randomUUID } = require("crypto");
 
 const subjectRepository = require("./subject.repository");
 const { SUBJECT_ERRORS } = require("./subject.constants");
@@ -7,7 +8,7 @@ const { SUBJECT_ERRORS } = require("./subject.constants");
 // Create subject
 const createSubject = async (data) => {
     const name = data.name.trim();
-    const code = data.code?.trim().toUpperCase() || null;
+    const code = data.code?.trim().toUpperCase() || `AUTO-${randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
     const classLevels = await subjectRepository.findClassLevelsByGroup(data.classGroup);
     if (!classLevels.length) throw new AppError(`No ${data.classGroup} class levels are configured.`, 409, "SUBJECT_CLASS_LEVELS_NOT_CONFIGURED");
     const departmentIds = data.classGroup === "SSS" ? [...new Set(data.departmentIds)] : [];
@@ -147,7 +148,7 @@ const updateSubject = async (id, data) => {
 
     // Update code
     if (data.code !== undefined) {
-        const code = data.code?.trim().toUpperCase() || null;
+        const code = data.code?.trim().toUpperCase() || `AUTO-${randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
 
         if (code && code !== existingSubject.code) {
             const duplicateCode = await subjectRepository.findSubjectByCode(code);

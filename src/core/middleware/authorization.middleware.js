@@ -135,6 +135,28 @@ const hasTeachingResultRouteAccess = (user, permissionKey, req) => {
     && segments?.length === 2 && segments[0] === "term-entry" && segments[1] === "batch";
 };
 
+const hasTeachingAcademicCalendarAccess = async (user, permissionKey, req) => {
+  if (!TEACHING_ROLES.has(user.role) || !req
+      || !["GET", "HEAD"].includes((req.method || "").toUpperCase())) return false;
+  const sessions = getResourceSegments(req, "academic-sessions");
+  if (permissionKey === "academic_sessions:view") {
+    return sessions?.length === 1 && sessions[0] === "current";
+  }
+  if (permissionKey !== "terms:view") return false;
+  const terms = getResourceSegments(req, "terms");
+  if (terms?.length === 1 && terms[0] === "current") return true;
+  if (terms?.length !== 2 || terms[0] !== "sessions") return false;
+  const activeSession = await prisma.academicSession.findFirst({
+    where: {
+      id: terms[1],
+      isActive: true,
+      ...(user.schoolId ? { schoolId: user.schoolId } : {}),
+    },
+    select: { id: true },
+  });
+  return Boolean(activeSession);
+};
+
 const hasTeachingAssignmentReadAccess = (user, permissionKey, req) => {
   if (permissionKey !== "teacher_assignments:view" || !TEACHING_ROLES.has(user.role)
       || !req || !["GET", "HEAD"].includes((req.method || "").toUpperCase())) return false;
@@ -156,6 +178,7 @@ const hasAssignedClassSubjectReadAccess = async (user, permissionKey, req) => {
 const hasPermission = async (user, permissionKey, req) => {
   if (!user) return false;
   if (user.role === "SUPER_ADMIN") return true;
+  if (user.role === "ADMIN" && /^(subjects|departments):/.test(permissionKey)) return true;
 
   const userPermission = await prisma.userPermission.findFirst({
     where: { userId: user.userId, permission: { key: permissionKey, isActive: true } },
@@ -175,6 +198,7 @@ const hasPermission = async (user, permissionKey, req) => {
     || hasTeachingSelfReadAccess(user, permissionKey, req)
     || hasScopedReportCardReadAccess(user, permissionKey, req)
     || hasTeachingResultRouteAccess(user, permissionKey, req)
+    || await hasTeachingAcademicCalendarAccess(user, permissionKey, req)
     || hasTeachingAssignmentReadAccess(user, permissionKey, req)
     || await hasAssignedClassSubjectReadAccess(user, permissionKey, req)
     || hasAssignedClassAccess(user, permissionKey, req);
@@ -186,6 +210,8 @@ const moduleActionForRequest = (req) => {
   const versionIndex = segments.findIndex((segment) => /^v\d+$/.test(segment));
   const apiIndex = segments.indexOf("api");
   const moduleIndex = versionIndex >= 0 ? versionIndex + 1 : apiIndex >= 0 ? apiIndex + 1 : 0;
+  if (segments[moduleIndex] === "settings" && segments[moduleIndex + 1] === "module-access"
+      && ["GET", "HEAD"].includes((req.method || "GET").toUpperCase())) return null;
   const moduleSlug = segments[moduleIndex];
   if (!moduleSlug || ["auth", "notifications"].includes(moduleSlug)
       || (moduleSlug === "roles" && segments[moduleIndex + 1] === "activate")) return null;

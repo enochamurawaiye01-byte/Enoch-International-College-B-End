@@ -31,6 +31,51 @@ test("class teacher access is assignment-scoped", async (t) => {
         schoolId: "school-1",
         role: "CLASS_TEACHER"
       });
+
+      test("school admins can manage subject and department records", async () => {
+        const admin = { userId: "school-admin", role: "ADMIN" };
+        assert.equal(await hasPermission(admin, "subjects:delete", {}), true);
+        assert.equal(await hasPermission(admin, "departments:delete", {}), true);
+      });
+
+      test("class teachers can read the active session and its terms", async () => {
+        const originals = {
+          userPermission: prisma.userPermission.findFirst,
+          roleAssignments: prisma.userRoleAssignment.findMany,
+          role: prisma.role.findUnique,
+          rolePermission: prisma.rolePermission.findFirst,
+          session: prisma.academicSession.findFirst,
+        };
+        prisma.userPermission.findFirst = async () => null;
+        prisma.userRoleAssignment.findMany = async () => [];
+        prisma.role.findUnique = async () => null;
+        prisma.rolePermission.findFirst = async () => null;
+        prisma.academicSession.findFirst = async ({ where }) => where.id === "active-session"
+          ? { id: where.id }
+          : null;
+        const teacher = { userId: "teacher-user", schoolId: "school-1", role: "CLASS_TEACHER" };
+
+        try {
+          assert.equal(await hasPermission(teacher, "academic_sessions:view", {
+            method: "GET",
+            originalUrl: "/api/v1/academic-sessions/current",
+          }), true);
+          assert.equal(await hasPermission(teacher, "terms:view", {
+            method: "GET",
+            originalUrl: "/api/v1/terms/sessions/active-session",
+          }), true);
+          assert.equal(await hasPermission(teacher, "terms:view", {
+            method: "GET",
+            originalUrl: "/api/v1/terms/sessions/closed-session",
+          }), false);
+        } finally {
+          prisma.userPermission.findFirst = originals.userPermission;
+          prisma.userRoleAssignment.findMany = originals.roleAssignments;
+          prisma.role.findUnique = originals.role;
+          prisma.rolePermission.findFirst = originals.rolePermission;
+          prisma.academicSession.findFirst = originals.session;
+        }
+      });
       assert.deepEqual(receivedClassIds, ["assigned-class"]);
       assert.deepEqual(classes, [{ id: "assigned-class" }]);
     } finally {
@@ -267,6 +312,9 @@ test("class teacher access is assignment-scoped", async (t) => {
       }), false);
       assert.equal(await hasPermission(teacher, "results:view", {
         method: "GET", originalUrl: "/api/results/teacher"
+      }), true);
+      assert.equal(await hasPermission(teacher, "results:view", {
+        method: "GET", originalUrl: "/api/v1/results/term-entry"
       }), true);
       assert.equal(await hasPermission(teacher, "results:edit", {
         method: "PUT", originalUrl: "/api/results/term-entry/batch"

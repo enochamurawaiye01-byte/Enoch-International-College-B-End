@@ -23,7 +23,19 @@ const updateDepartment = (id, data) =>
 const findDepartmentUsage = (id) =>
 	prisma.department.findUnique({
 		where: { id },
-		select: { _count: { select: { subjects: true, staff: true } } },
+		select: {
+			_count: {
+				select: {
+					subjects: true,
+					subjectTargets: true,
+					staff: true,
+					enrollments: true,
+					studentApplicants: true,
+					studentDepartmentSelections: true,
+					admissionApplicants: true,
+				},
+			},
+		},
 	});
 
 const deleteDepartment = (id) =>
