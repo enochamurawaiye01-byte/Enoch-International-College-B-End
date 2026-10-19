@@ -1,3 +1,25 @@
+const crypto = require("node:crypto");
+
+const SUFFIX_SPACE = 10_000;
+
+const greatestCommonDivisor = (left, right) => {
+  while (right) {
+    [left, right] = [right, left % right];
+  }
+  return left;
+};
+
+const suffixParameters = (scope) => {
+  const seed = crypto.createHash("sha256").update(scope).digest();
+  const offset = seed.readUInt32BE(0) % SUFFIX_SPACE;
+  let step = seed.readUInt32BE(4) % SUFFIX_SPACE;
+  if (step === 0) step = 1;
+  while (greatestCommonDivisor(step, SUFFIX_SPACE) !== 1) {
+    step = (step + 1) % SUFFIX_SPACE || 1;
+  }
+  return { offset, step };
+};
+
 const generateRegistrationNumber = async (tx, fullName, admissionDate = new Date(), schoolId = null) => {
   const year = new Date(admissionDate).getFullYear();
   const school = schoolId
@@ -5,8 +27,9 @@ const generateRegistrationNumber = async (tx, fullName, admissionDate = new Date
     : null;
   const prefix = school?.registrationPrefix || "MIC";
   const scope = `${prefix}/${year}`;
+  const { offset, step } = suffixParameters(scope);
 
-  while (true) {
+  for (let attempts = 0; attempts < SUFFIX_SPACE; attempts += 1) {
     const [{ value }] = await tx.$queryRaw`
       INSERT INTO "RegistrationNumberCounter" ("scope", "value", "updatedAt")
       VALUES (${scope}, 1, NOW())
@@ -14,7 +37,8 @@ const generateRegistrationNumber = async (tx, fullName, admissionDate = new Date
       SET "value" = "RegistrationNumberCounter"."value" + 1, "updatedAt" = NOW()
       RETURNING "value"
     `;
-    const registrationNumber = `${prefix}/${year}/${String(value).padStart(6, "0")}`;
+    const suffix = (offset + (Number(value) - 1) * step) % SUFFIX_SPACE;
+    const registrationNumber = `${scope}/${String(suffix).padStart(4, "0")}`;
 
     const existingStudent = await tx.student.findUnique({
       where: {
@@ -26,6 +50,8 @@ const generateRegistrationNumber = async (tx, fullName, admissionDate = new Date
       return registrationNumber;
     }
   }
+
+  throw new Error(`No four-digit student registration numbers remain for ${scope}.`);
 };
 
 module.exports = generateRegistrationNumber;

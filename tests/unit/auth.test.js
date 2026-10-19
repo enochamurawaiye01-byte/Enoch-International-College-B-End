@@ -72,31 +72,50 @@ describe("Registration application validation", () => {
 });
 
 describe("Student registration number generation", () => {
-    it("uses a sequential MIC identifier and skips an existing number", async () => {
-        const issued = new Set();
-        const existingNumber = "MIC/2026/000001";
-        issued.add(existingNumber);
+    it("generates unique, randomized-looking four-digit MIC suffixes", async () => {
         let nextValue = 0;
         const client = {
             $queryRaw: async () => [{ value: ++nextValue }],
-            student: {
-                findUnique: async ({ where }) => {
-                    return issued.has(where.registrationNumber) ? { id: "existing" } : null;
-                },
-            },
+            student: { findUnique: async () => null },
         };
-        const generated = [];
-        for (let index = 0; index < 100; index += 1) {
-            const registrationNumber = await generateRegistrationNumber(client, "Jordan Adebayo", new Date("2026-06-01T00:00:00Z"));
-            generated.push(registrationNumber);
-            issued.add(registrationNumber);
-        }
+        const generated = await Promise.all(Array.from({ length: 100 }, () =>
+            generateRegistrationNumber(client, "Jordan Adebayo", new Date("2026-06-01T00:00:00Z"))
+        ));
 
-        assert.ok(generated.every((registrationNumber) => /^MIC\/2026\/\d{6}$/.test(registrationNumber)));
+        assert.ok(generated.every((registrationNumber) => /^MIC\/2026\/\d{4}$/.test(registrationNumber)));
         assert.equal(new Set(generated).size, 100);
-        assert.ok(!generated.includes(existingNumber));
-        assert.equal(generated[0], "MIC/2026/000002");
-        assert.equal(generated[1], "MIC/2026/000003");
+        assert.notEqual(
+            Number(generated[1].split("/").at(-1)),
+            Number(generated[0].split("/").at(-1)) + 1
+        );
+    });
+
+    it("skips an already-issued randomized suffix", async () => {
+        let nextValue = 0;
+        const client = {
+            $queryRaw: async () => [{ value: ++nextValue }],
+            student: { findUnique: async () => null },
+        };
+        const existingNumber = await generateRegistrationNumber(
+            client,
+            "Jordan Adebayo",
+            new Date("2026-06-01T00:00:00Z")
+        );
+        nextValue = 0;
+        let lookupCount = 0;
+        client.student.findUnique = async ({ where }) => {
+            lookupCount += 1;
+            return where.registrationNumber === existingNumber ? { id: "existing" } : null;
+        };
+        const nextNumber = await generateRegistrationNumber(
+            client,
+            "Jordan Adebayo",
+            new Date("2026-06-01T00:00:00Z")
+        );
+
+        assert.match(nextNumber, /^MIC\/2026\/\d{4}$/);
+        assert.notEqual(nextNumber, existingNumber);
+        assert.equal(lookupCount, 2);
     });
 
     it("accepts registration number login and requires one identifier", () => {
@@ -122,6 +141,6 @@ describe("Student registration number generation", () => {
         ));
 
         assert.equal(new Set(numbers).size, 100);
-        assert.deepEqual(numbers.slice(0, 3), ["MIC/2026/000001", "MIC/2026/000002", "MIC/2026/000003"]);
+        assert.ok(numbers.every((number) => /^MIC\/2026\/\d{4}$/.test(number)));
     });
 });

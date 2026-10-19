@@ -52,7 +52,7 @@ const updateStudent = async (studentId, data) =>
     });
 
 const findById = async (id) => prisma.student.findUnique({ where: { id }, include: { user: { select: userSelect }, currentClass: { include: { classLevel: true } }, desiredDepartment: true, parentLinks: { include: { parent: true } }, enrollments: { include: { session: true, term: true, department: true, class: { include: { classLevel: true } } } }, promotions: true, reportCards: { where: { studentPublished: true }, include: { session: true, term: true, entries: { include: { subject: true } } }, orderBy: [{ session: { startDate: "desc" } }, { term: { type: "desc" } }] } } });
-const findAll = async ({ schoolId, search, classId, classIds, status } = {}) => {
+const findAll = async ({ schoolId, search, classId, classIds, status, page = 1, pageSize = 20 } = {}) => {
     const conditions = [];
     const selectedClassIds = classId ? [classId] : classIds;
     if (selectedClassIds) conditions.push({
@@ -68,15 +68,30 @@ const findAll = async ({ schoolId, search, classId, classIds, status } = {}) => 
             { registrationNumber: { contains: search, mode: "insensitive" } },
             { user: { email: { contains: search, mode: "insensitive" } } }
     ] });
-    return prisma.student.findMany({
-    where: {
+    const where = {
         ...(status ? { status } : {}),
         ...(schoolId ? { user: { schoolId } } : {}),
         ...(conditions.length ? { AND: conditions } : {})
-    },
-    include: { user: { select: userSelect }, currentClass: { include: { classLevel: true } } },
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }]
-    });
+    };
+    const [items, total] = await Promise.all([
+        prisma.student.findMany({
+            where,
+            include: { user: { select: userSelect }, currentClass: { include: { classLevel: true } } },
+            orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+            skip: (page - 1) * pageSize,
+            take: pageSize,
+        }),
+        prisma.student.count({ where }),
+    ]);
+    return {
+        items,
+        meta: {
+            page,
+            pageSize,
+            total,
+            totalPages: Math.ceil(total / pageSize),
+        },
+    };
 };
 const findUserByEmail = async (email) => prisma.user.findUnique({ where: { email } });
 const findClassById = async (id) => prisma.class.findUnique({ where: { id } });

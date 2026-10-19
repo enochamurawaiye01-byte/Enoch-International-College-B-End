@@ -147,7 +147,7 @@ test("class teacher access is assignment-scoped", async (t) => {
     };
     studentRepository.findAll = async (query) => {
       filters = query;
-      return [];
+      return { items: [], meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 } };
     };
 
     try {
@@ -173,7 +173,7 @@ test("class teacher access is assignment-scoped", async (t) => {
     studentRepository.findTeacherClassIds = async () => ["assigned-class"];
     studentRepository.findAll = async (filters) => {
       receivedFilters.push(filters);
-      return [];
+      return { items: [], meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 } };
     };
 
     try {

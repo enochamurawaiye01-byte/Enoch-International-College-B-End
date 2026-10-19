@@ -139,11 +139,17 @@ const createStudent = async (data, schoolId) => {
 };
 
 const getAllStudents = async (query, user) => {
+    const requestedPage = Number.parseInt(query?.page, 10);
+    const requestedPageSize = Number.parseInt(query?.pageSize, 10);
     const filters = {
-        schoolId: user?.schoolId,
+        schoolId: user?.role === "SUPER_ADMIN" ? undefined : user?.schoolId,
         search: typeof query?.search === "string" ? query.search.trim() : query?.search,
         classId: query?.classId,
-        status: query?.status
+        status: query?.status,
+        page: Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+        pageSize: Number.isInteger(requestedPageSize) && requestedPageSize > 0
+            ? Math.min(requestedPageSize, 100)
+            : 20,
     };
     if (isTeachingAccount(user)) {
         const classIds = await repository.findTeacherClassIds(user.userId, user.schoolId, user.role);
@@ -154,8 +160,9 @@ const getAllStudents = async (query, user) => {
         filters.classIds = [...new Set(requestedClassIds)];
         delete filters.classId;
     }
-    const students = await repository.findAll(filters);
-    return Promise.all(students.map(async (student) => ({ ...student, profileImageUrl: await getFileUrl(student.profileImageUrl) })));
+    const result = await repository.findAll(filters);
+    const items = await Promise.all(result.items.map(async (student) => ({ ...student, profileImageUrl: await getFileUrl(student.profileImageUrl) })));
+    return { ...result, items };
 };
 const getStudentById = async (id, user) => {
     const student = await repository.findById(id);
