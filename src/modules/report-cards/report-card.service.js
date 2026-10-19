@@ -86,30 +86,29 @@ const getEntrySheet = async (query, user) => {
 	const configuration = await getConfiguration(user);
 	const isClassTeacher = user?.role === "CLASS_TEACHER";
 	const isJuniorSecondary = schoolClass.classLevel.code.startsWith("JSS");
-	let eligible;
-	if (isClassTeacher && isJuniorSecondary) {
-		const students = await repository.findCurrentClassRoster(classId);
-		eligible = students.map((student) => ({ studentId: student.id, student }));
-	} else {
-		const [enrollments, currentClassStudents] = await Promise.all([
-			repository.findEnrollmentRoster(classId, sessionId, termId),
-			repository.findCurrentClassRoster(classId)
-		]);
-		const enrollmentByStudent = new Map(enrollments.map((enrollment) => [enrollment.studentId, enrollment]));
-		const roster = currentClassStudents.map((student) => {
-			const enrollment = enrollmentByStudent.get(student.id);
-			return enrollment || {
+	const [enrollments, currentClassStudents] = await Promise.all([
+		repository.findEnrollmentRoster(classId, sessionId, termId),
+		repository.findCurrentClassRoster(classId)
+	]);
+	const rosterByStudent = new Map(enrollments.map((enrollment) => [enrollment.studentId, enrollment]));
+	currentClassStudents.forEach((student) => {
+		if (!rosterByStudent.has(student.id)) {
+			rosterByStudent.set(student.id, {
 				studentId: student.id,
 				student,
 				class: schoolClass,
 				departmentId: student.desiredDepartmentId,
 				subjectRegistrations: []
-			};
-		});
-		eligible = isJuniorSecondary
-			? roster
-			: roster.filter((enrollment) => hasSubjectRegistration(enrollment, classSubject));
-	}
+			});
+		}
+	});
+	const roster = [...rosterByStudent.values()].sort((left, right) =>
+		(left.student.lastName || "").localeCompare(right.student.lastName || "")
+		|| (left.student.firstName || "").localeCompare(right.student.firstName || "")
+	);
+	const eligible = isJuniorSecondary
+		? roster
+		: roster.filter((enrollment) => hasSubjectRegistration(enrollment, classSubject));
 	const studentIds = eligible.map((enrollment) => enrollment.studentId);
 	const reports = studentIds.length ? await prisma.reportCard.findMany({
 		where: { studentId: { in: studentIds }, sessionId, termId },

@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { prisma } = require("../../src/config/database");
 const repository = require("../../src/modules/report-cards/report-card.repository");
 const reportCardService = require("../../src/modules/report-cards/report-card.service");
 
@@ -45,7 +46,7 @@ test("assignment-scoped result entry supports specific teaching roles", async (t
   }
 });
 
-test("class teachers can enter results for subjects in their assigned class", async () => {
+test("JSS class-teacher result sheets include the selected term's enrolled students", async () => {
   const original = {
     findStaffByUserId: repository.findStaffByUserId,
     findTeacherAssignment: repository.findTeacherAssignment,
@@ -57,6 +58,7 @@ test("class teachers can enter results for subjects in their assigned class", as
     findConfiguration: repository.findConfiguration,
     findEnrollmentRoster: repository.findEnrollmentRoster,
     findCurrentClassRoster: repository.findCurrentClassRoster,
+    reportCardFindMany: prisma.reportCard.findMany,
   };
   repository.findStaffByUserId = async () => ({ id: "staff-1", status: "ACTIVE" });
   repository.findTeacherAssignment = async () => null;
@@ -71,17 +73,18 @@ test("class teachers can enter results for subjects in their assigned class", as
   repository.findTerm = async () => ({ id: "term-1", sessionId: "session-1", type: "FIRST" });
   repository.findClassSubject = async () => ({ id: "class-subject-1", subject: { id: "subject-1", isActive: true } });
   repository.findConfiguration = async () => null;
+  const currentClassStudent = {
+    id: "student-1",
+    firstName: "Amina",
+    middleName: null,
+    lastName: "Example",
+    registrationNumber: "REG-001",
+    desiredDepartmentId: null,
+    user: { email: "amina@example.test" },
+  };
   repository.findCurrentClassRoster = async (classId) => {
     assert.equal(classId, "class-1");
-    return [{
-      id: "student-1",
-      firstName: "Amina",
-      middleName: null,
-      lastName: "Example",
-      registrationNumber: "REG-001",
-      desiredDepartmentId: null,
-      user: { email: "amina@example.test" },
-    }, {
+    return [currentClassStudent, {
       id: "student-2",
       firstName: "Bola",
       middleName: null,
@@ -91,7 +94,30 @@ test("class teachers can enter results for subjects in their assigned class", as
       user: { email: "bola@example.test" },
     }];
   };
-  repository.findEnrollmentRoster = async () => assert.fail("JSS class-teacher roster must not query enrollments");
+  repository.findEnrollmentRoster = async (classId, sessionId, termId) => {
+    assert.equal(classId, "class-1");
+    assert.equal(sessionId, "session-1");
+    assert.equal(termId, "term-1");
+    return [{
+      studentId: "student-1",
+      student: currentClassStudent,
+      class: { id: "class-1" },
+      subjectRegistrations: [],
+    }, {
+      studentId: "student-3",
+      student: {
+        id: "student-3",
+        firstName: "Chika",
+        middleName: null,
+        lastName: "Example",
+        registrationNumber: "REG-003",
+        user: { email: "chika@example.test" },
+      },
+      class: { id: "class-1" },
+      subjectRegistrations: [],
+    }];
+  };
+  prisma.reportCard.findMany = async () => [];
 
   try {
     const result = await reportCardService.getEntrySheet(
@@ -99,12 +125,23 @@ test("class teachers can enter results for subjects in their assigned class", as
         { userId: "teacher-user", role: "CLASS_TEACHER", schoolId: "school-1" }
     );
     assert.equal(result.teacherId, "staff-1");
-    assert.equal(result.students.length, 2);
+    assert.equal(result.students.length, 3);
     assert.equal(result.students[0].id, "student-1");
     assert.equal(result.students[0].fullName, "Amina Example");
     assert.equal(result.students[1].id, "student-2");
+    assert.equal(result.students[2].id, "student-3");
   } finally {
-    Object.entries(original).forEach(([name, value]) => { repository[name] = value; });
+    repository.findStaffByUserId = original.findStaffByUserId;
+    repository.findTeacherAssignment = original.findTeacherAssignment;
+    repository.findClassTeacherAssignment = original.findClassTeacherAssignment;
+    repository.findClass = original.findClass;
+    repository.findSession = original.findSession;
+    repository.findTerm = original.findTerm;
+    repository.findClassSubject = original.findClassSubject;
+    repository.findConfiguration = original.findConfiguration;
+    repository.findEnrollmentRoster = original.findEnrollmentRoster;
+    repository.findCurrentClassRoster = original.findCurrentClassRoster;
+    prisma.reportCard.findMany = original.reportCardFindMany;
   }
 });
 

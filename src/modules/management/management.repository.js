@@ -1,4 +1,5 @@
 const { prisma } = require("../../config/database");
+const { TEACHING_ROLES } = require("../../core/utils/teaching-roles");
 
 const count = (model, where) => prisma[model].count({ where });
 
@@ -14,7 +15,7 @@ const dashboard = async () => {
 		resultsAgg,
 	] = await Promise.all([
 		count("student", { status: "ACTIVE" }),
-		count("staff", { user: { role: "TEACHER" }, status: "ACTIVE" }),
+		count("staff", { user: { role: { in: [...TEACHING_ROLES] } }, status: "ACTIVE" }),
 		count("staff", { status: "ACTIVE" }),
 		count("parent", {}),
 		prisma.payment.aggregate({ where: { status: "PAID" }, _sum: { amount: true } }),
@@ -26,7 +27,9 @@ const dashboard = async () => {
 	const present = attendanceByStatus.find((a) => a.status === "PRESENT")?._count?._all || 0;
 	const totalAtt = attendanceByStatus.reduce((acc, a) => acc + a._count._all, 0) || 1;
 	const averageAttendance = Math.round((present / totalAtt) * 1000) / 10;
-	const averagePerformance = resultsAgg._avg.percentage ? Math.round(Number(resultsAgg._avg.percentage) * 10) / 10 : 75.0;
+	const averagePerformance = resultsAgg._avg.percentage == null
+		? null
+		: Math.round(Number(resultsAgg._avg.percentage) * 10) / 10;
 
 	return {
 		totalStudents,
@@ -43,4 +46,3 @@ const dashboard = async () => {
 };
 
 module.exports = { dashboard };
-

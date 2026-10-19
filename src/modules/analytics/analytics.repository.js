@@ -1,4 +1,5 @@
 const { prisma } = require("../../config/database");
+const { TEACHING_ROLES } = require("../../core/utils/teaching-roles");
 
 const dashboard = async (query) => {
 	const studentWhere = { ...(query.sessionId ? { currentSessionId: query.sessionId } : {}) };
@@ -16,7 +17,7 @@ const dashboard = async (query) => {
 		attendanceByStatus,
 	] = await Promise.all([
 		prisma.student.count({ where: studentWhere }),
-		prisma.staff.count({ where: { status: "ACTIVE", user: { role: "TEACHER" } } }),
+		prisma.staff.count({ where: { status: "ACTIVE", user: { role: { in: [...TEACHING_ROLES] } } } }),
 		prisma.parent.count(),
 		prisma.class.count({ where: { isActive: true } }),
 		prisma.academicSession.findFirst({ where: { isActive: true } }),
@@ -46,4 +47,3 @@ const dashboard = async (query) => {
 };
 
 module.exports = { dashboard };
-
