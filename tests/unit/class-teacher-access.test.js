@@ -5,6 +5,8 @@ const classRepository = require("../../src/modules/classes/class.repository");
 const classService = require("../../src/modules/classes/class.service");
 const studentRepository = require("../../src/modules/students/student.repository");
 const studentService = require("../../src/modules/students/student.service");
+const teacherService = require("../../src/modules/teachers/teacher.service");
+const teacherRepository = require("../../src/modules/teachers/teacher.repository");
 const { hasPermission } = require("../../src/core/middleware/authorization.middleware");
 
 test("class teacher access is assignment-scoped", async (t) => {
@@ -81,6 +83,25 @@ test("class teacher access is assignment-scoped", async (t) => {
     } finally {
       classRepository.findTeacherClassIds = originals.findTeacherClassIds;
       classRepository.findAllClasses = originals.findAllClasses;
+    }
+  });
+
+  await t.test("teacher profiles retain class-teacher assignments for the roster UI", async () => {
+    const original = teacherRepository.findByUserId;
+    teacherRepository.findByUserId = async () => ({
+      id: "teacher-profile",
+      profileImageUrl: null,
+      user: { id: "teacher-user" },
+      teacherAssignments: [],
+      classTeacherAssignments: [{ id: "cta-1", sessionId: "session-1", classId: "assigned-class", class: { id: "assigned-class", name: "JSS1 Blue" } }],
+    });
+
+    try {
+      const teacher = await teacherService.getCurrent("teacher-user");
+      assert.deepEqual(teacher.classTeacherAssignments.map((assignment) => assignment.classId), ["assigned-class"]);
+      assert.equal(teacher.classTeacherAssignments[0].session, null);
+    } finally {
+      teacherRepository.findByUserId = original;
     }
   });
 

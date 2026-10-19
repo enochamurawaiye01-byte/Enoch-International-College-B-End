@@ -24,6 +24,7 @@ const withSignedProfile = async (teacher, includeApplicationLetter = false) => {
   ...profile,
   profileImageUrl: await getFileUrl(teacher.profileImageUrl),
   teacherAssignments: await attachAssignmentPeriods(teacher.teacherAssignments),
+  classTeacherAssignments: await attachAssignmentPeriods(teacher.classTeacherAssignments),
  };
  if (includeApplicationLetter && applicationLetterUrl) result.applicationLetterUrl = await getFileUrl(applicationLetterUrl);
  return result;
