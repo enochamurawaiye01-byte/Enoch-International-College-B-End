@@ -307,6 +307,32 @@ test("Access Control & Super Admin Protection Unit Tests", async (t) => {
     }
   });
 
+  await t.test("Super Admin protections still apply when designation setup has not run", async () => {
+    const originalFindById = userRepository.findById;
+    userRepository.findById = async () => ({
+      id: "primary-admin",
+      fullName: "Primary Admin",
+      role: "SUPER_ADMIN",
+      status: "ACTIVE",
+      isProtectedSuperAdmin: false,
+      roleAssignments: []
+    });
+
+    try {
+      const actor = { userId: "another-admin", role: "SUPER_ADMIN" };
+      await assert.rejects(
+        userService.changeStatus("primary-admin", "DEACTIVATED", actor),
+        (error) => error.code === "PROTECTED_SUPER_ADMIN"
+      );
+      await assert.rejects(
+        userService.remove("primary-admin", actor),
+        (error) => error.code === "PROTECTED_SUPER_ADMIN"
+      );
+    } finally {
+      userRepository.findById = originalFindById;
+    }
+  });
+
   await t.test("protected Super Admin cannot activate a role that would demote the account", async () => {
     const originalFindAssignment = prisma.userRoleAssignment.findUnique;
     const originalTransaction = prisma.$transaction;

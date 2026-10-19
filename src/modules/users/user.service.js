@@ -26,7 +26,7 @@ const hasSuperAdminRole = (user) => {
   );
 };
 const assertNotProtectedSuperAdmin = (user) => {
-  if (user?.isProtectedSuperAdmin) {
+  if (user?.isProtectedSuperAdmin || hasSuperAdminRole(user)) {
     throw new AppError("The protected SUPER_ADMIN account cannot be modified through user administration.", 403, "PROTECTED_SUPER_ADMIN");
   }
 };

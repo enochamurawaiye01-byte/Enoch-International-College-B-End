@@ -2366,6 +2366,9 @@ model Timetable {
   class   Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
 
   name String?
+  scheduleFileUrl String?
+  scheduleFileName String?
+  isActive Boolean @default(true)
 
   slots TimetableSlot[]
 

@@ -391,8 +391,10 @@ const forgotPassword = async (email) => {
         process.env.JWT_SECRET,
         { expiresIn: "15m" }
     );
+    const configuredResetUrl = process.env.FRONTEND_RESET_URL?.trim();
     const frontendBase = (process.env.FRONTEND_URL || "http://localhost:3000").split(",")[0].trim().replace(/\/$/, "");
-    const resetUrl = `${process.env.FRONTEND_RESET_URL || `${frontendBase}/reset-password.html`}?token=${encodeURIComponent(token)}`;
+    const resetPageUrl = configuredResetUrl || `${frontendBase}/reset-password.html`;
+    const resetUrl = `${resetPageUrl}${resetPageUrl.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
 
     try {
         await sendPasswordResetEmail({ to: normalizedEmail, resetUrl });

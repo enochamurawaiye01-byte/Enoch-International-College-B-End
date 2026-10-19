@@ -31,7 +31,16 @@ const assign = (data) => prisma.userRoleAssignment.upsert({
 
 const findAssignmentByToken = (activationToken) => prisma.userRoleAssignment.findUnique({
   where: { activationToken },
-  include: { role: true, user: { include: { student: { select: { id: true } }, staff: { select: { staffNumber: true } } } } }
+  include: {
+    role: true,
+    user: {
+      include: {
+        student: { select: { id: true } },
+        staff: { select: { staffNumber: true } },
+        roleAssignments: { select: { status: true, role: { select: { name: true } } } },
+      },
+    },
+  }
 });
 
 const findUserAssignments = (userId) => prisma.userRoleAssignment.findMany({
@@ -71,7 +80,13 @@ const revoke = (data) => prisma.userRoleAssignment.update({
 
 const findUser = (id) => prisma.user.findUnique({
   where: { id },
-  include: { student: { select: { id: true } }, staff: { select: { staffNumber: true } } }
+  include: {
+    student: { select: { id: true } },
+    staff: { select: { staffNumber: true } },
+    roleAssignments: {
+      select: { status: true, role: { select: { name: true } } },
+    },
+  }
 });
 
 const lockSuperAdminLimit = async (tx) => {

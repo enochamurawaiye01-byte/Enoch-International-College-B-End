@@ -57,8 +57,13 @@ const auditDeniedRoleAction = (actor, userId, action) => audit(
   "Unauthorized role-management attempt"
 );
 const isStudentAccount = (user) => user?.role === "STUDENT" || Boolean(user?.student);
+const hasSuperAdminRole = (user) => user?.role === "SUPER_ADMIN"
+  || user?.isProtectedSuperAdmin
+  || user?.roleAssignments?.some((assignment) =>
+    assignment?.role?.name === "SUPER_ADMIN" && ["ACTIVE", "PENDING"].includes(assignment.status)
+  );
 const assertNotProtectedSuperAdmin = (user) => {
-  if (user?.isProtectedSuperAdmin) {
+  if (hasSuperAdminRole(user)) {
     throw new AppError("The protected SUPER_ADMIN account cannot have its roles changed.", 403, "PROTECTED_SUPER_ADMIN");
   }
 };
@@ -260,7 +265,16 @@ const activateRole = async ({ token, assignmentId }, actorUser) => {
   } else if (assignmentId) {
     assignment = await prisma.userRoleAssignment.findUnique({
       where: { id: assignmentId },
-      include: { role: true, user: { include: { student: { select: { id: true } }, staff: { select: { staffNumber: true } } } } }
+      include: {
+        role: true,
+        user: {
+          include: {
+            student: { select: { id: true } },
+            staff: { select: { staffNumber: true } },
+            roleAssignments: { select: { status: true, role: { select: { name: true } } } },
+          },
+        },
+      }
     });
   }
 

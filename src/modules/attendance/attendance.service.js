@@ -12,27 +12,40 @@ const validateReferences = async (data) => {
 	if (!term) throw new NotFoundError("Term not found");
 	if (term.sessionId !== session.id) throw new AppError("Term does not belong to the selected session.", 409, "TERM_SESSION_MISMATCH");
 	if (!enrollment || enrollment.status !== "ACTIVE") throw new AppError("Student is not actively enrolled for this term.", 409, "STUDENT_NOT_ENROLLED");
-	return student;
+	return { student, enrollment };
 };
 
-const assertTeacherAccess = async (user, student, sessionId, termId) => {
+const assertTeacherAccess = async (user, classId, sessionId, termId) => {
 	if (isAdmin(user.role)) return;
-	if (user.role !== "TEACHER") throw new AppError("Only assigned teachers or administrators can manage attendance.", 403, "ATTENDANCE_ACCESS_DENIED");
-	if (!student.currentClassId || !(await repository.findAssignment((await repository.findStaffByUserId(user.id))?.id, student.currentClassId, sessionId, termId))) throw new AppError("You are not assigned to this student's class.", 403, "CLASS_ASSIGNMENT_REQUIRED");
+	if (!classId) throw new AppError("Attendance is not associated with a class.", 403, "CLASS_ASSIGNMENT_REQUIRED");
+	const staff = await repository.findStaffByUserId(user.userId || user.id);
+	if (!staff) throw new AppError("Only assigned teachers or administrators can manage attendance.", 403, "ATTENDANCE_ACCESS_DENIED");
+	if (user.role === "CLASS_TEACHER") {
+		if (!(await repository.findClassTeacherAssignment(staff.id, classId, sessionId))) {
+			throw new AppError("You are not assigned as this class's teacher for the selected session.", 403, "CLASS_ASSIGNMENT_REQUIRED");
+		}
+		return;
+	}
+	if (user.role !== "TEACHER" || !(await repository.findAssignment(staff.id, classId, sessionId, termId))) {
+		throw new AppError("You are not assigned to this student's class.", 403, "CLASS_ASSIGNMENT_REQUIRED");
+	}
 };
 
 const create = async (data, user) => {
 	const normalized = { ...data, date: startOfDay(data.date) };
-	const student = await validateReferences(normalized);
-	await assertTeacherAccess(user, student, normalized.sessionId, normalized.termId);
+	const { enrollment } = await validateReferences(normalized);
+	await assertTeacherAccess(user, enrollment.classId, normalized.sessionId, normalized.termId);
 	if (await repository.findDuplicate(normalized.studentId, normalized.date)) throw new AppError("Attendance already exists for this student and date.", 409, "ATTENDANCE_EXISTS");
-	return repository.create(normalized);
+	return repository.create({ ...normalized, classId: enrollment.classId });
 };
 
 const getById = async (id, user) => {
 	const attendance = await repository.findById(id);
 	if (!attendance) throw new NotFoundError("Attendance record not found");
-	await assertTeacherAccess(user, attendance.student, attendance.sessionId, attendance.termId);
+	if (!isAdmin(user.role)) {
+		const enrollment = attendance.classId ? null : await repository.findEnrollment(attendance.studentId, attendance.sessionId, attendance.termId);
+		await assertTeacherAccess(user, attendance.classId || enrollment?.classId || attendance.student?.currentClassId, attendance.sessionId, attendance.termId);
+	}
 	return attendance;
 };
 
@@ -42,16 +55,24 @@ const update = async (id, data, user) => {
 };
 
 const getAll = async (query, user) => {
+	if (!isAdmin(user.role) && !["TEACHER", "CLASS_TEACHER"].includes(user.role)) {
+		throw new AppError("Only assigned teachers or administrators can view attendance.", 403, "ATTENDANCE_ACCESS_DENIED");
+	}
 	const where = {};
 	if (query.studentId) where.studentId = query.studentId;
+	if (query.classId) where.classId = query.classId;
 	if (query.sessionId) where.sessionId = query.sessionId;
 	if (query.termId) where.termId = query.termId;
 	if (query.date) { const date = startOfDay(query.date); where.date = date; }
 	if (query.from || query.to) where.date = { ...(query.from ? { gte: startOfDay(query.from) } : {}), ...(query.to ? { lte: startOfDay(query.to) } : {}) };
-	if (user.role === "TEACHER") {
-		const classIds = await repository.findTeacherClassIds(user.id, query.sessionId, query.termId);
+	if (!isAdmin(user.role)) {
+		const classIds = user.role === "CLASS_TEACHER"
+			? await repository.findClassTeacherClassIds(user.userId || user.id, query.sessionId)
+			: await repository.findTeacherClassIds(user.userId || user.id, query.sessionId, query.termId);
 		if (!classIds?.length) return [];
-		where.student = { currentClassId: { in: classIds } };
+		where.classId = query.classId
+			? (classIds.includes(query.classId) ? query.classId : { in: [] })
+			: { in: classIds };
 	}
 	return repository.findAll(where);
 };
@@ -62,4 +83,46 @@ const summary = async (query, user) => {
 	return { total: records.length, counts, percentage: records.length ? Number((((counts.PRESENT || 0) + (counts.LATE || 0) + (counts.HALF_DAY || 0) * 0.5) / records.length * 100).toFixed(2)) : 0 };
 };
 
-module.exports = { create, getById, update, getAll, summary };
+const batchCreate = async (data, user) => {
+	const date = startOfDay(data.date);
+	const [schoolClass, session, term] = await Promise.all([
+		repository.findClassById(data.classId),
+		repository.findSession(data.sessionId),
+		repository.findTerm(data.termId),
+	]);
+	if (!schoolClass) throw new NotFoundError("Class not found");
+	if (!session) throw new NotFoundError("Academic session not found");
+	if (!term) throw new NotFoundError("Term not found");
+	if (term.sessionId !== session.id) throw new AppError("Term does not belong to the selected session.", 409, "TERM_SESSION_MISMATCH");
+	await assertTeacherAccess(user, data.classId, data.sessionId, data.termId);
+
+	const studentIds = data.records.map(({ studentId }) => studentId);
+	if (new Set(studentIds).size !== studentIds.length) throw new AppError("Each student can only be marked once per batch.", 400, "DUPLICATE_STUDENT");
+	const enrollments = await repository.findEnrollments(studentIds, data.sessionId, data.termId);
+	const enrolledStudentIds = new Set(enrollments
+		.filter((enrollment) => enrollment.status === "ACTIVE" && enrollment.classId === data.classId)
+		.map(({ studentId }) => studentId));
+	if (enrolledStudentIds.size !== studentIds.length) {
+		throw new AppError("Every student must be actively enrolled in the selected class, session, and term.", 409, "STUDENT_NOT_ENROLLED");
+	}
+
+	const duplicates = await repository.findDuplicates(studentIds, date);
+	if (duplicates.length) throw new AppError("Attendance already exists for one or more students on this date.", 409, "ATTENDANCE_EXISTS");
+	const records = data.records.map((record) => ({
+		studentId: record.studentId,
+		classId: data.classId,
+		sessionId: data.sessionId,
+		termId: data.termId,
+		date,
+		status: record.status,
+		remarks: record.remarks ?? null,
+	}));
+	try {
+		return await repository.createMany(records);
+	} catch (error) {
+		if (error.code === "P2002") throw new AppError("Attendance already exists for one or more students on this date.", 409, "ATTENDANCE_EXISTS");
+		throw error;
+	}
+};
+
+module.exports = { create, batchCreate, getById, update, getAll, summary };

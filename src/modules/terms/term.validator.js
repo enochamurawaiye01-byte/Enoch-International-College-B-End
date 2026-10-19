@@ -73,10 +73,18 @@ const updateTermSchema = z
 
         isActive: z.boolean().optional(),
     })
-    .strict();
+    .strict()
+    .superRefine((data, ctx) => {
+        if (data.startDate && data.endDate && data.endDate <= data.startDate) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["endDate"],
+                message: "Term end date must be after the start date.",
+            });
+        }
+    });
 
 module.exports = {
     createTermSchema,
     updateTermSchema,
 };
-
