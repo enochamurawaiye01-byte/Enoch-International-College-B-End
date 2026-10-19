@@ -556,6 +556,7 @@ model User {
 
   role   UserRole
   status UserStatus @default(ACTIVE)
+  isProtectedSuperAdmin Boolean @default(false)
   hasCompletedFirstLogin Boolean @default(false)
 
   currentClass String?

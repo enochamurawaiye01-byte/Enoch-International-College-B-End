@@ -260,4 +260,76 @@ test("Access Control & Super Admin Protection Unit Tests", async (t) => {
       prisma.user.delete = originalUserDelete;
     }
   });
+
+  await t.test("protected Super Admin cannot be deactivated, removed, or demoted", async () => {
+    const originalFindById = userRepository.findById;
+    const originalFindUser = roleRepository.findUser;
+    userRepository.findById = async () => ({
+      id: "protected-admin",
+      fullName: "Protected Admin",
+      role: "SUPER_ADMIN",
+      status: "ACTIVE",
+      isProtectedSuperAdmin: true,
+      roleAssignments: []
+    });
+    roleRepository.findUser = async () => ({
+      id: "protected-admin",
+      role: "SUPER_ADMIN",
+      isProtectedSuperAdmin: true,
+      schoolId: "school-1"
+    });
+
+    try {
+      const actor = { userId: "other-admin", role: "SUPER_ADMIN" };
+      await assert.rejects(
+        userService.changeStatus("protected-admin", "DEACTIVATED", actor),
+        (error) => error.code === "PROTECTED_SUPER_ADMIN"
+      );
+      await assert.rejects(
+        userService.update("protected-admin", { status: "SUSPENDED" }, actor),
+        (error) => error.code === "PROTECTED_SUPER_ADMIN"
+      );
+      await assert.rejects(
+        userService.remove("protected-admin", actor),
+        (error) => error.code === "PROTECTED_SUPER_ADMIN"
+      );
+      await assert.rejects(
+        roleService.changeUserRoles("protected-admin", { roles: ["ADMIN"] }, actor),
+        (error) => error.code === "PROTECTED_SUPER_ADMIN"
+      );
+      await assert.rejects(
+        roleService.assignRoles({ userId: "protected-admin", roleIds: ["ADMIN"] }, actor),
+        (error) => error.code === "PROTECTED_SUPER_ADMIN"
+      );
+    } finally {
+      userRepository.findById = originalFindById;
+      roleRepository.findUser = originalFindUser;
+    }
+  });
+
+  await t.test("protected Super Admin cannot activate a role that would demote the account", async () => {
+    const originalFindAssignment = prisma.userRoleAssignment.findUnique;
+    const originalTransaction = prisma.$transaction;
+    prisma.userRoleAssignment.findUnique = async () => ({
+      id: "pending-admin-assignment",
+      userId: "protected-admin",
+      status: "PENDING",
+      activationExpiresAt: new Date(Date.now() + 60_000),
+      role: { id: "admin-role", name: "ADMIN" },
+      user: { id: "protected-admin", isProtectedSuperAdmin: true }
+    });
+    prisma.$transaction = async () => {
+      assert.fail("Protected role activation must be rejected before starting a transaction.");
+    };
+
+    try {
+      await assert.rejects(
+        roleService.activateRole({ assignmentId: "pending-admin-assignment" }, { userId: "protected-admin" }),
+        (error) => error.code === "PROTECTED_SUPER_ADMIN"
+      );
+    } finally {
+      prisma.userRoleAssignment.findUnique = originalFindAssignment;
+      prisma.$transaction = originalTransaction;
+    }
+  });
 });

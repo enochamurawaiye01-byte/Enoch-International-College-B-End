@@ -17,6 +17,19 @@ const titleCaseFromEnum = (str) => {
 };
 
 const getById = async (id) => { const user = await repository.findById(id); if (!user) throw new NotFoundError("User not found"); return user; };
+const hasSuperAdminRole = (user) => {
+  if (!user) return false;
+  const roleName = typeof user.role === "string" ? user.role : user.role?.name;
+  if (roleName === "SUPER_ADMIN") return true;
+  return Array.isArray(user.roleAssignments) && user.roleAssignments.some((assignment) =>
+    assignment?.role?.name === "SUPER_ADMIN" && ["ACTIVE", "PENDING"].includes(assignment.status)
+  );
+};
+const assertNotProtectedSuperAdmin = (user) => {
+  if (user?.isProtectedSuperAdmin) {
+    throw new AppError("The protected SUPER_ADMIN account cannot be modified through user administration.", 403, "PROTECTED_SUPER_ADMIN");
+  }
+};
 const assertAdmin = (user) => { if (!["SUPER_ADMIN", "ADMIN"].includes(user.role)) throw new AppError("User administration access required.", 403, "USER_ACCESS_DENIED"); };
 const create = async (data, actor) => {
   assertAdmin(actor);
@@ -50,8 +63,8 @@ const list = async (query, actor) => { assertAdmin(actor); const normalized = no
 const update = async (id, data, actor) => {
   assertAdmin(actor);
   const target = await getById(id);
-  const targetHasSuperAdmin = target.role === "SUPER_ADMIN"
-    || target.roleAssignments?.some((assignment) => assignment.role?.name === "SUPER_ADMIN" && ["ACTIVE", "PENDING"].includes(assignment.status));
+  if (target.isProtectedSuperAdmin && data.status && data.status !== "ACTIVE") assertNotProtectedSuperAdmin(target);
+  const targetHasSuperAdmin = hasSuperAdminRole(target);
   if (targetHasSuperAdmin && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can modify a SUPER_ADMIN.", 403, "SUPER_ADMIN_PROTECTED");
   if (data.status === undefined) return repository.update(id, data);
   const { status, ...profileData } = data;
@@ -202,9 +215,9 @@ const activateStudentApplication = async (target) => prisma.$transaction(async (
 const changeStatus = async (id, status, actor) => {
   assertAdmin(actor);
   const target = await getById(id);
+  if (status !== "ACTIVE") assertNotProtectedSuperAdmin(target);
   if (id === actor.userId && status !== "ACTIVE") throw new AppError("You cannot deactivate your own account.", 403, "SELF_DISABLE_DENIED");
-  const targetHasSuperAdmin = target.role === "SUPER_ADMIN"
-    || target.roleAssignments?.some((assignment) => assignment.role?.name === "SUPER_ADMIN" && ["ACTIVE", "PENDING"].includes(assignment.status));
+  const targetHasSuperAdmin = hasSuperAdminRole(target);
   let assignedRegNumber = null;
   if (status === "ACTIVE" && target.role === "STUDENT") {
     assignedRegNumber = await activateStudentApplication(target);
@@ -323,14 +336,14 @@ const changeStatus = async (id, status, actor) => {
   return { ...(await getById(id)), registrationNumber: assignedRegNumber, statusChangeWarnings: followUpErrors };
 };
 
-const resetPassword = async (id, password, actor) => { assertAdmin(actor); const target = await getById(id); if (target.role === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can reset a SUPER_ADMIN password.", 403, "SUPER_ADMIN_PROTECTED"); return repository.update(id, { passwordHash: await hashNewPassword(password) }); };
+const resetPassword = async (id, password, actor) => { assertAdmin(actor); const target = await getById(id); assertNotProtectedSuperAdmin(target); if (hasSuperAdminRole(target) && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can reset a SUPER_ADMIN password.", 403, "SUPER_ADMIN_PROTECTED"); return repository.update(id, { passwordHash: await hashNewPassword(password) }); };
 
 const remove = async (id, actor) => {
   assertAdmin(actor);
   const target = await getById(id);
   if (id === actor.userId) throw new AppError("You cannot delete your own account.", 403, "SELF_DELETE_DENIED");
-  const targetHasSuperAdmin = target.role === "SUPER_ADMIN"
-    || target.roleAssignments?.some((assignment) => assignment.role?.name === "SUPER_ADMIN" && ["ACTIVE", "PENDING"].includes(assignment.status));
+  assertNotProtectedSuperAdmin(target);
+  const targetHasSuperAdmin = hasSuperAdminRole(target);
   if (targetHasSuperAdmin && actor.role !== "SUPER_ADMIN") throw new AppError("Only SUPER_ADMIN can delete another SUPER_ADMIN.", 403, "SUPER_ADMIN_PROTECTED");
 
   try {

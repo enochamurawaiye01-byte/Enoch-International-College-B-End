@@ -11,7 +11,7 @@ const roleAssignmentsSelect = {
 	},
 	orderBy: { assignedAt: "asc" }
 };
-const findById = (id) => prisma.user.findUnique({ where: { id }, select: { ...publicUserSelect, roleAssignments: roleAssignmentsSelect, permissionGrants: { include: { permission: true } } } });
+const findById = (id) => prisma.user.findUnique({ where: { id }, select: { ...publicUserSelect, isProtectedSuperAdmin: true, roleAssignments: roleAssignmentsSelect, permissionGrants: { include: { permission: true } } } });
 const findByEmail = (email) => prisma.user.findUnique({ where: { email } });
 const findAll = (where, skip, take) => prisma.user.findMany({
 	where,

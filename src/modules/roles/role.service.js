@@ -57,6 +57,11 @@ const auditDeniedRoleAction = (actor, userId, action) => audit(
   "Unauthorized role-management attempt"
 );
 const isStudentAccount = (user) => user?.role === "STUDENT" || Boolean(user?.student);
+const assertNotProtectedSuperAdmin = (user) => {
+  if (user?.isProtectedSuperAdmin) {
+    throw new AppError("The protected SUPER_ADMIN account cannot have its roles changed.", 403, "PROTECTED_SUPER_ADMIN");
+  }
+};
 
 const getById = async (id) => {
   const role = await repository.findById(id);
@@ -104,6 +109,7 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
 
   const targetUser = await repository.findUser(userId);
   if (!targetUser) throw new NotFoundError("Target user not found");
+  assertNotProtectedSuperAdmin(targetUser);
   if (isStudentAccount(targetUser)) {
     throw new AppError("Students cannot be assigned system roles. Manage student prefect positions through Prefects.", 403, "STUDENT_SYSTEM_ROLE_DENIED");
   }
@@ -263,6 +269,7 @@ const activateRole = async ({ token, assignmentId }, actorUser) => {
   if (actorUser.userId !== assignment.userId) {
     throw new AppError("You can only activate your own assigned role.", 403, "ACTIVATION_ACCESS_DENIED");
   }
+  assertNotProtectedSuperAdmin(assignment.user);
   if (isStudentAccount(assignment.user) && assignment.role.name !== "STUDENT") {
     throw new AppError("Students cannot activate system roles. Manage student prefect positions through Prefects.", 403, "STUDENT_SYSTEM_ROLE_DENIED");
   }
@@ -416,6 +423,7 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
 
   const targetUser = await repository.findUser(userId);
   if (!targetUser) throw new NotFoundError("Target user not found");
+  assertNotProtectedSuperAdmin(targetUser);
 
   if (userId === actor.userId) {
     throw new AppError("You cannot modify your own administrative roles.", 403, "SELF_ROLE_CHANGE_DENIED");

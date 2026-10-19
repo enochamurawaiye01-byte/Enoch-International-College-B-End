@@ -143,6 +143,32 @@ test("class teacher access is assignment-scoped", async (t) => {
     }
   });
 
+  await t.test("class teacher search cannot widen results beyond assigned classes", async () => {
+    const originals = {
+      findTeacherClassIds: studentRepository.findTeacherClassIds,
+      findAll: studentRepository.findAll
+    };
+    const receivedFilters = [];
+    studentRepository.findTeacherClassIds = async () => ["assigned-class"];
+    studentRepository.findAll = async (filters) => {
+      receivedFilters.push(filters);
+      return [];
+    };
+
+    try {
+      const teacher = { userId: "teacher-user", schoolId: "school-1", role: "CLASS_TEACHER" };
+      await studentService.getAllStudents({ classId: "unassigned-class", search: "  Amina  " }, teacher);
+      await studentService.getAllStudents({ classId: "assigned-class", search: "  Amina  " }, teacher);
+
+      assert.deepEqual(receivedFilters.map(({ classIds }) => classIds), [[], ["assigned-class"]]);
+      assert.deepEqual(receivedFilters.map(({ search }) => search), ["Amina", "Amina"]);
+      assert.equal(receivedFilters[0].classId, undefined);
+    } finally {
+      studentRepository.findTeacherClassIds = originals.findTeacherClassIds;
+      studentRepository.findAll = originals.findAll;
+    }
+  });
+
   await t.test("a teacher cannot open an unassigned class roster", async () => {
     const originals = {
       findClassById: classRepository.findClassById,

@@ -141,13 +141,17 @@ const createStudent = async (data, schoolId) => {
 const getAllStudents = async (query, user) => {
     const filters = {
         schoolId: user?.schoolId,
-        search: query?.search?.trim(),
+        search: typeof query?.search === "string" ? query.search.trim() : query?.search,
         classId: query?.classId,
         status: query?.status
     };
     if (isTeachingAccount(user)) {
         const classIds = await repository.findTeacherClassIds(user.userId, user.schoolId, user.role);
-        filters.classIds = query?.classId ? classIds.filter((id) => id === query.classId) : classIds;
+        const assignedClassIds = [...new Set(classIds || [])];
+        const requestedClassIds = query?.classId
+            ? assignedClassIds.filter((id) => id === query.classId)
+            : assignedClassIds;
+        filters.classIds = [...new Set(requestedClassIds)];
         delete filters.classId;
     }
     const students = await repository.findAll(filters);
