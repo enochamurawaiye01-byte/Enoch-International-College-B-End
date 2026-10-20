@@ -5,6 +5,13 @@ const { getFileUrl } = require("../../config/storage");
 const { TEACHER_ASSIGNMENT_ERRORS: ERRORS } = require("./teacher-assignment.constants");
 const { isTeachingAccount } = require("../../core/utils/teaching-roles");
 
+const hasClassTeacherRole = (user) => user?.role === "CLASS_TEACHER"
+    || user?.roleAssignments?.some((assignment) =>
+        assignment.status === "ACTIVE"
+        && assignment.role?.name === "CLASS_TEACHER"
+        && assignment.role.isActive !== false
+    );
+
 const create = async (data) => {
     const [staff, subject] = await Promise.all([
         repository.findStaffById(data.staffId),
@@ -96,7 +103,7 @@ const assignClassTeacher = async (data, user) => {
         repository.findSession(data.sessionId)
     ]);
     if (!staff || staff.status !== "ACTIVE" || staff.user.status !== "ACTIVE") throw new AppError(ERRORS.STAFF_NOT_ACTIVE, 409, "STAFF_NOT_ACTIVE");
-    if (staff.user.role !== "CLASS_TEACHER") throw new AppError("Only staff with the CLASS_TEACHER role can be assigned as a class teacher.", 403, "CLASS_TEACHER_ROLE_REQUIRED");
+    if (!hasClassTeacherRole(staff.user)) throw new AppError("Only staff with the CLASS_TEACHER role can be assigned as a class teacher.", 403, "CLASS_TEACHER_ROLE_REQUIRED");
     if (!schoolClass || !schoolClass.isActive) throw new AppError(ERRORS.CLASS_NOT_FOUND, 404, "CLASS_NOT_FOUND");
     if (!session || !schoolClass.isActive) throw new AppError("Active class and academic session are required.", 404, "SESSION_OR_CLASS_NOT_FOUND");
     const existingAssignment = await repository.findClassTeacherAssignmentByClassSession(schoolClass.id, session.id);
