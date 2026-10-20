@@ -26,8 +26,18 @@ const findById = (id) => prisma.studentAttendance.findUnique({ where: { id }, in
 const findDuplicate = (studentId, date) => prisma.studentAttendance.findUnique({ where: { studentId_date: { studentId, date } } });
 const findDuplicates = (studentIds, date) => prisma.studentAttendance.findMany({ where: { studentId: { in: studentIds }, date }, select: { studentId: true } });
 const create = (data) => prisma.studentAttendance.create({ data, include });
-const createMany = (records) => prisma.$transaction(async (tx) => {
-	await tx.studentAttendance.createMany({ data: records });
+const saveMany = (records) => prisma.$transaction(async (tx) => {
+	await Promise.all(records.map((record) => tx.studentAttendance.upsert({
+		where: { studentId_date: { studentId: record.studentId, date: record.date } },
+		create: record,
+		update: {
+			classId: record.classId,
+			sessionId: record.sessionId,
+			termId: record.termId,
+			status: record.status,
+			remarks: record.remarks
+		}
+	})));
 	return tx.studentAttendance.findMany({ where: { date: records[0].date, studentId: { in: records.map(({ studentId }) => studentId) } }, include, orderBy: { createdAt: "asc" } });
 });
 const update = (id, data) => prisma.studentAttendance.update({ where: { id }, data, include });
@@ -42,5 +52,5 @@ const findTeacherClassIds = async (userId, sessionId, termId) => {
 module.exports = {
 	findStudent, findSession, findTerm, findEnrollment, findEnrollments, findClassById,
 	findStaffByUserId, findAssignment, findClassTeacherAssignment, findClassTeacherClassIds,
-	findById, findDuplicate, findDuplicates, create, createMany, update, findAll, findTeacherClassIds,
+	findById, findDuplicate, findDuplicates, create, saveMany, update, findAll, findTeacherClassIds,
 };

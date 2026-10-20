@@ -106,8 +106,6 @@ const batchCreate = async (data, user) => {
 		throw new AppError("Every student must be actively enrolled in the selected class, session, and term.", 409, "STUDENT_NOT_ENROLLED");
 	}
 
-	const duplicates = await repository.findDuplicates(studentIds, date);
-	if (duplicates.length) throw new AppError("Attendance already exists for one or more students on this date.", 409, "ATTENDANCE_EXISTS");
 	const records = data.records.map((record) => ({
 		studentId: record.studentId,
 		classId: data.classId,
@@ -117,12 +115,7 @@ const batchCreate = async (data, user) => {
 		status: record.status,
 		remarks: record.remarks ?? null,
 	}));
-	try {
-		return await repository.createMany(records);
-	} catch (error) {
-		if (error.code === "P2002") throw new AppError("Attendance already exists for one or more students on this date.", 409, "ATTENDANCE_EXISTS");
-		throw error;
-	}
+	return repository.saveMany(records);
 };
 
 module.exports = { create, batchCreate, getById, update, getAll, summary };
