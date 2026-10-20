@@ -80,7 +80,7 @@ test("re-saving the same class teacher assignment is idempotent", async () => {
   }
 });
 
-test("any active teacher can be assigned as class teacher without a pre-existing CLASS_TEACHER role", async () => {
+test("an active staff account can be assigned as class teacher without a pre-existing teaching role", async () => {
   const originals = {
     findStaffById: repository.findStaffById,
     findClassById: repository.findClassById,
@@ -96,7 +96,7 @@ test("any active teacher can be assigned as class teacher without a pre-existing
     user: {
       id: "user-2",
       status: "ACTIVE",
-      role: "TEACHER",
+      role: "STAFF",
       roleAssignments: [],
     },
   });

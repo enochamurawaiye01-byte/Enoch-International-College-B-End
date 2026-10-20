@@ -17,6 +17,16 @@ const findStaffById = (id) => prisma.staff.findUnique({
 		}
 	},
 });
+const findClassTeacherCandidates = () => prisma.staff.findMany({
+	where: { status: "ACTIVE", user: { status: "ACTIVE" } },
+	select: {
+		id: true,
+		firstName: true,
+		lastName: true,
+		user: { select: { fullName: true } }
+	},
+	orderBy: [{ lastName: "asc" }, { firstName: "asc" }]
+});
 const findStaffByUserId = (userId) => prisma.staff.findUnique({ where: { userId }, select: { id: true } });
 const findClassById = (id) => prisma.class.findUnique({ where: { id } });
 const findClassesWithSubject = (subjectId, classLevel) => prisma.classSubject.findMany({
@@ -190,7 +200,7 @@ const removeClassTeacherAssignment = (id) => prisma.$transaction(async (tx) => {
 });
 
 module.exports = {
-	findStaffById, findStaffByUserId, findSession, findClassTeacherRole, findTerm, findClassById, findClassesWithSubject, findSubjectById, findClassSubject, findDuplicate, create, createForClasses, findAll, findById, remove,
+	findStaffById, findClassTeacherCandidates, findStaffByUserId, findSession, findClassTeacherRole, findTerm, findClassById, findClassesWithSubject, findSubjectById, findClassSubject, findDuplicate, create, createForClasses, findAll, findById, remove,
 	findClassTeacherAssignment, findClassTeacherAssignments, findClassTeacherAssignmentByClassSession,
 	ensureClassTeacherRole, saveClassTeacherAssignment, removeClassTeacherAssignment
 };

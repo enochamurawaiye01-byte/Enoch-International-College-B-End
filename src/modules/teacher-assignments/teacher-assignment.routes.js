@@ -12,6 +12,7 @@ const requireAssignmentReadAccess = (req, res, next) => TEACHING_ROLES.has(req.u
 	? next()
 	: requireRoles("SUPER_ADMIN", "ADMIN")(req, res, next);
 router.get("/class-teachers", requireAssignmentReadAccess, controller.getClassTeachers);
+router.get("/class-teacher-candidates", requireRoles("SUPER_ADMIN", "ADMIN"), controller.getClassTeacherCandidates);
 router.post("/class-teachers", requireRoles("SUPER_ADMIN", "ADMIN"), validate(classTeacherAssignmentSchema), controller.assignClassTeacher);
 router.delete("/class-teachers/:id", requireRoles("SUPER_ADMIN", "ADMIN"), controller.removeClassTeacher);
 router.post("/", requireRoles("SUPER_ADMIN", "ADMIN"), validate(createTeacherAssignmentSchema), controller.create);

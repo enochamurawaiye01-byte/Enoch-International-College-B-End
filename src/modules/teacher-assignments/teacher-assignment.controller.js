@@ -4,6 +4,7 @@ const getAll = async (req, res, next) => { try { return res.json({ success: true
 const getById = async (req, res, next) => { try { return res.json({ success: true, data: await service.getById(req.params.id, req.user) }); } catch (error) { next(error); } };
 const remove = async (req, res, next) => { try { await service.remove(req.params.id); return res.json({ success: true, message: "Teacher assignment removed successfully." }); } catch (error) { next(error); } };
 const getClassTeachers = async (req, res, next) => { try { return res.json({ success: true, data: await service.getClassTeachers(req.query, req.user) }); } catch (error) { next(error); } };
+const getClassTeacherCandidates = async (_req, res, next) => { try { return res.json({ success: true, data: await service.getClassTeacherCandidates() }); } catch (error) { next(error); } };
 const assignClassTeacher = async (req, res, next) => { try { return res.json({ success: true, data: await service.assignClassTeacher(req.body, req.user) }); } catch (error) { next(error); } };
 const removeClassTeacher = async (req, res, next) => { try { await service.removeClassTeacher(req.params.id); return res.json({ success: true, message: "Class teacher assignment removed." }); } catch (error) { next(error); } };
-module.exports = { create, getAll, getById, remove, getClassTeachers, assignClassTeacher, removeClassTeacher };
+module.exports = { create, getAll, getById, remove, getClassTeachers, getClassTeacherCandidates, assignClassTeacher, removeClassTeacher };

@@ -5,13 +5,6 @@ const { getFileUrl } = require("../../config/storage");
 const { TEACHER_ASSIGNMENT_ERRORS: ERRORS } = require("./teacher-assignment.constants");
 const { isTeachingAccount } = require("../../core/utils/teaching-roles");
 
-const hasTeachingRole = (user) => isTeachingAccount(user)
-    || user?.roleAssignments?.some((assignment) =>
-        assignment.status === "ACTIVE"
-        && isTeachingAccount({ role: assignment.role?.name })
-        && assignment.role.isActive !== false
-    );
-
 const create = async (data) => {
     const [staff, subject] = await Promise.all([
         repository.findStaffById(data.staffId),
@@ -96,6 +89,7 @@ const getClassTeachers = async (query, user) => {
         staff: assignment.staff ? { ...assignment.staff, profileImageUrl: await getFileUrl(assignment.staff.profileImageUrl) } : assignment.staff,
     })));
 };
+const getClassTeacherCandidates = () => repository.findClassTeacherCandidates();
 const assignClassTeacher = async (data, user) => {
     const [staff, schoolClass, session] = await Promise.all([
         repository.findStaffById(data.staffId),
@@ -103,7 +97,6 @@ const assignClassTeacher = async (data, user) => {
         repository.findSession(data.sessionId)
     ]);
     if (!staff || staff.status !== "ACTIVE" || staff.user.status !== "ACTIVE") throw new AppError(ERRORS.STAFF_NOT_ACTIVE, 409, "STAFF_NOT_ACTIVE");
-    if (!hasTeachingRole(staff.user)) throw new AppError("Only active teachers can be assigned as class teachers.", 403, "TEACHER_ROLE_REQUIRED");
     if (!schoolClass || !schoolClass.isActive) throw new AppError(ERRORS.CLASS_NOT_FOUND, 404, "CLASS_NOT_FOUND");
     if (!session) throw new AppError("An academic session is required.", 404, "SESSION_NOT_FOUND");
     const classTeacherRole = await repository.findClassTeacherRole();
@@ -136,4 +129,4 @@ const removeClassTeacher = async (id) => {
     if (!removed) throw new AppError("Class teacher assignment could not be removed.", 409, "CLASS_TEACHER_ASSIGNMENT_REMOVE_FAILED");
     return removed;
 };
-module.exports = { create, getAll, getById, remove, getClassTeachers, assignClassTeacher, removeClassTeacher };
+module.exports = { create, getAll, getById, remove, getClassTeachers, getClassTeacherCandidates, assignClassTeacher, removeClassTeacher };
