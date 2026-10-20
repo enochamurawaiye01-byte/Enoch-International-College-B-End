@@ -125,6 +125,120 @@ test("role assignment workflows", async (t) => {
     }
   });
 
+  await t.test("CLASS_TEACHER can be assigned to multiple users and is active immediately", async () => {
+    const originals = {
+      findUser: roleRepository.findUser,
+      findByName: roleRepository.findByName,
+      findById: roleRepository.findById,
+      transaction: prisma.$transaction,
+      auditCreate: prisma.auditLog.create
+    };
+    const users = new Map(["teacher-1", "teacher-2"].map((id) => [id, {
+      id,
+      fullName: id,
+      email: null,
+      role: "TEACHER",
+      status: "ACTIVE",
+      schoolId: "school-1",
+      student: null
+    }]));
+    const classTeacherRole = { id: "class-teacher-role-id", name: "CLASS_TEACHER", isActive: true };
+    const assignments = new Map();
+    roleRepository.findUser = async (id) => users.get(id);
+    roleRepository.findByName = async (name) => name === classTeacherRole.name ? classTeacherRole : null;
+    roleRepository.findById = async (id) => id === classTeacherRole.id ? classTeacherRole : null;
+    prisma.$transaction = async (callback) => callback({
+      userRoleAssignment: {
+        findUnique: async ({ where }) => assignments.get(where.userId_roleId.userId) || null,
+        upsert: async ({ create }) => {
+          const assignment = { id: `assignment-${create.userId}`, ...create };
+          assignments.set(create.userId, assignment);
+          return assignment;
+        },
+        update: async () => assert.fail("No pending assignment should need activation")
+      },
+      user: { update: async () => ({}) },
+      userSession: { deleteMany: async () => ({ count: 0 }) }
+    });
+    prisma.auditLog.create = async () => ({ id: "audit-id" });
+
+    try {
+      for (const userId of users.keys()) {
+        const result = await roleService.assignRoles(
+          { userId, roleIds: [classTeacherRole.name] },
+          { userId: "admin-user", role: "SUPER_ADMIN" }
+        );
+        assert.equal(result.assignedRoles[0].status, "ACTIVE");
+      }
+      assert.equal(assignments.size, 2);
+      assert.deepEqual([...assignments.values()].map((assignment) => assignment.status), ["ACTIVE", "ACTIVE"]);
+    } finally {
+      roleRepository.findUser = originals.findUser;
+      roleRepository.findByName = originals.findByName;
+      roleRepository.findById = originals.findById;
+      prisma.$transaction = originals.transaction;
+      prisma.auditLog.create = originals.auditCreate;
+    }
+  });
+
+  await t.test("bulk role changes activate CLASS_TEACHER for multiple users without pending activation", async () => {
+    const originals = {
+      findUser: roleRepository.findUser,
+      findAssignments: roleRepository.findUserAssignments,
+      roleFindUnique: prisma.role.findUnique,
+      transaction: prisma.$transaction,
+      auditCreate: prisma.auditLog.create
+    };
+    const users = new Map(["teacher-1", "teacher-2"].map((id) => [id, {
+      id,
+      fullName: id,
+      email: null,
+      role: "TEACHER",
+      status: "ACTIVE",
+      schoolId: "school-1",
+      student: null
+    }]));
+    const classTeacherRole = { id: "class-teacher-role-id", name: "CLASS_TEACHER", isActive: true };
+    const assignments = new Map();
+    roleRepository.findUser = async (id) => users.get(id);
+    roleRepository.findUserAssignments = async (userId) => assignments.has(userId) ? [assignments.get(userId)] : [];
+    prisma.role.findUnique = async ({ where }) => where.name === classTeacherRole.name ? classTeacherRole : null;
+    prisma.$transaction = async (callback) => callback({
+      userRoleAssignment: {
+        upsert: async ({ create }) => {
+          const assignment = { id: `assignment-${create.userId}`, ...create, role: classTeacherRole };
+          assignments.set(create.userId, assignment);
+          return assignment;
+        },
+        findMany: async ({ where }) => assignments.has(where.userId) ? [assignments.get(where.userId)] : []
+      },
+      user: { update: async ({ where, data }) => Object.assign(users.get(where.id), data) },
+      userSession: { deleteMany: async () => ({ count: 0 }) },
+      notification: { updateMany: async () => ({ count: 0 }) }
+    });
+    prisma.auditLog.create = async () => ({ id: "audit-id" });
+
+    try {
+      for (const userId of users.keys()) {
+        const result = await roleService.changeUserRoles(
+          userId,
+          { roles: [classTeacherRole.name] },
+          { userId: "admin-user", role: "SUPER_ADMIN" }
+        );
+        assert.equal(result.assignments[0].status, "ACTIVE");
+      }
+      assert.equal(assignments.size, 2);
+      assert.deepEqual([...assignments.values()].map((assignment) => assignment.status), ["ACTIVE", "ACTIVE"]);
+      assert.deepEqual([...users.values()].map((user) => user.role), ["CLASS_TEACHER", "CLASS_TEACHER"]);
+    } finally {
+      roleRepository.findUser = originals.findUser;
+      roleRepository.findUserAssignments = originals.findAssignments;
+      prisma.role.findUnique = originals.roleFindUnique;
+      prisma.$transaction = originals.transaction;
+      prisma.auditLog.create = originals.auditCreate;
+    }
+  });
+
   await t.test("changes remove revoked assignments and restore the default account role", async () => {
     const originals = {
       findUser: roleRepository.findUser,

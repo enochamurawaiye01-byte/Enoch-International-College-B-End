@@ -11,6 +11,7 @@ const generateRegistrationNumber = require("../../core/utils/generate-registrati
 
 const MAX_SUPER_ADMINS = 3;
 const ROLE_ACTIVATION_TTL_MS = 72 * 60 * 60 * 1000;
+const ADMIN_ACTIVATED_ROLES = new Set(["CLASS_TEACHER"]);
 const EXCLUSIVE_ROLE_NAMES = new Set([
   "PRINCIPAL",
   "VICE_PRINCIPAL",
@@ -144,6 +145,23 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
         continue;
       }
       if (existingAssignment?.status === "PENDING" && existingAssignment.activationExpiresAt > new Date()) {
+        if (ADMIN_ACTIVATED_ROLES.has(roleObj.name)) {
+          const activatedAt = new Date();
+          await tx.userRoleAssignment.update({
+            where: { userId_roleId: { userId, roleId: roleObj.id } },
+            data: {
+              status: "ACTIVE",
+              activatedBy: actor.userId,
+              activatedAt,
+              activationToken: null,
+              activationExpiresAt: null
+            }
+          });
+          await tx.user.update({ where: { id: userId }, data: { role: roleObj.name } });
+          await tx.userSession.deleteMany({ where: { userId } });
+          assignedRolesInfo.push({ roleId: roleObj.id, name: roleObj.name, status: "ACTIVE", assignmentId: existingAssignment.id, existing: true });
+          continue;
+        }
         assignedRolesInfo.push({ roleId: roleObj.id, name: roleObj.name, status: existingAssignment.status, assignmentId: existingAssignment.id, existing: true });
         continue;
       }
@@ -176,9 +194,11 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
         }
       }
 
-      const status = "PENDING";
-      const activationToken = crypto.randomBytes(32).toString("hex");
-      const activationExpiresAt = new Date(Date.now() + ROLE_ACTIVATION_TTL_MS);
+      const activatesImmediately = ADMIN_ACTIVATED_ROLES.has(roleObj.name);
+      const status = activatesImmediately ? "ACTIVE" : "PENDING";
+      const activationToken = activatesImmediately ? null : crypto.randomBytes(32).toString("hex");
+      const activationExpiresAt = activatesImmediately ? null : new Date(Date.now() + ROLE_ACTIVATION_TTL_MS);
+      const activatedAt = activatesImmediately ? new Date() : null;
 
       const assignment = await tx.userRoleAssignment.upsert({
         where: { userId_roleId: { userId, roleId: roleObj.id } },
@@ -187,8 +207,8 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
           assignedBy: actor.userId,
           activationToken,
           activationExpiresAt,
-          activatedBy: null,
-          activatedAt: null,
+          activatedBy: activatesImmediately ? actor.userId : null,
+          activatedAt,
           removedAt: null,
           assignedAt: new Date()
         },
@@ -198,10 +218,16 @@ const assignRoles = async ({ userId, roleIds }, actor) => {
           status,
           assignedBy: actor.userId,
           activationToken,
-          activationExpiresAt
+          activationExpiresAt,
+          activatedBy: activatesImmediately ? actor.userId : null,
+          activatedAt
         }
       });
 
+      if (activatesImmediately) {
+        await tx.user.update({ where: { id: userId }, data: { role: roleObj.name } });
+        await tx.userSession.deleteMany({ where: { userId } });
+      }
       assignedRolesInfo.push({ roleId: roleObj.id, name: roleObj.name, status, token: activationToken, assignmentId: assignment.id });
     }
   });
@@ -469,6 +495,11 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
     const existing = existingByRoleId.get(role.id);
     return !existing || existing.status === "REMOVED";
   });
+  const pendingAdminActivatedRoles = existingAssignments.filter((assignment) =>
+    targetRoleIds.has(assignment.roleId)
+    && assignment.status === "PENDING"
+    && ADMIN_ACTIVATED_ROLES.has(assignment.role.name)
+  );
   const newAssignments = [];
 
   await prisma.$transaction(async (tx) => {
@@ -511,21 +542,43 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
           throw new AppError(`Maximum limit of ${MAX_SUPER_ADMINS} Super Admins has been reached.`, 409, "SUPER_ADMIN_LIMIT_EXCEEDED");
         }
       }
-      const token = crypto.randomBytes(32).toString("hex");
-      const expiry = new Date(Date.now() + ROLE_ACTIVATION_TTL_MS);
+      const activatesImmediately = ADMIN_ACTIVATED_ROLES.has(role.name);
+      const token = activatesImmediately ? null : crypto.randomBytes(32).toString("hex");
+      const expiry = activatesImmediately ? null : new Date(Date.now() + ROLE_ACTIVATION_TTL_MS);
+      const activatedAt = activatesImmediately ? new Date() : null;
       const assignment = await tx.userRoleAssignment.upsert({
         where: { userId_roleId: { userId, roleId: role.id } },
         update: {
-          status: "PENDING", assignedBy: actor.userId, activationToken: token,
-          activationExpiresAt: expiry, activatedBy: null, activatedAt: null,
+          status: activatesImmediately ? "ACTIVE" : "PENDING",
+          assignedBy: actor.userId, activationToken: token,
+          activationExpiresAt: expiry,
+          activatedBy: activatesImmediately ? actor.userId : null,
+          activatedAt,
           removedAt: null, assignedAt: new Date()
         },
         create: {
-          userId, roleId: role.id, status: "PENDING", assignedBy: actor.userId,
-          activationToken: token, activationExpiresAt: expiry
+          userId, roleId: role.id,
+          status: activatesImmediately ? "ACTIVE" : "PENDING",
+          assignedBy: actor.userId,
+          activationToken: token, activationExpiresAt: expiry,
+          activatedBy: activatesImmediately ? actor.userId : null,
+          activatedAt
         }
       });
-      newAssignments.push({ assignmentId: assignment.id, roleId: role.id, name: role.name, token });
+      newAssignments.push({ assignmentId: assignment.id, roleId: role.id, name: role.name, token, status: activatesImmediately ? "ACTIVE" : "PENDING" });
+    }
+
+    for (const assignment of pendingAdminActivatedRoles) {
+      await tx.userRoleAssignment.update({
+        where: { userId_roleId: { userId, roleId: assignment.roleId } },
+        data: {
+          status: "ACTIVE",
+          activatedBy: actor.userId,
+          activatedAt: new Date(),
+          activationToken: null,
+          activationExpiresAt: null
+        }
+      });
     }
 
     for (const assignment of removedAssignments) {
@@ -539,7 +592,7 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
       });
     }
 
-    if (newAssignments.length || removedAssignments.length) {
+    if (newAssignments.length || removedAssignments.length || pendingAdminActivatedRoles.length) {
       await tx.userSession.deleteMany({ where: { userId } });
     }
 
@@ -556,7 +609,7 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
   });
 
   const followUpErrors = [];
-  for (const assignment of newAssignments) {
+  for (const assignment of newAssignments.filter((item) => item.status === "PENDING")) {
     try {
       const notification = await prisma.notification.create({
         data: {
