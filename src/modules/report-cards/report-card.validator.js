@@ -1,4 +1,5 @@
 const { z } = require("zod");
+const { MAX_ASSESSMENT_COMPONENTS } = require("./report-card.utils");
 const uuid = z.string().uuid("Must be a valid ID.");
 const score = z.coerce.number().min(0).nullable().optional();
 const entry = z.object({ subjectId: uuid, firstTest: score, secondTest: score, assignment: score, exam: score, teacherComment: z.string().trim().max(500).nullable().optional() }).strict();
@@ -16,9 +17,9 @@ const classPublicationSchema = z.object({
 	portal: z.enum(["student", "parent"]).optional(),
 }).strict();
 const assessmentConfigurationSchema = z.object({
-	firstTestMax: z.coerce.number().positive().max(1000),
-	secondTestMax: z.coerce.number().positive().max(1000),
-	examMax: z.coerce.number().positive().max(1000),
+	firstTestMax: z.coerce.number().positive().max(MAX_ASSESSMENT_COMPONENTS.firstTestMax),
+	secondTestMax: z.coerce.number().positive().max(MAX_ASSESSMENT_COMPONENTS.secondTestMax),
+	examMax: z.coerce.number().positive().max(MAX_ASSESSMENT_COMPONENTS.examMax),
 	gradeBands: z.array(z.object({
 		minimum: z.coerce.number().min(0).max(100),
 		grade: z.string().trim().min(1).max(8),

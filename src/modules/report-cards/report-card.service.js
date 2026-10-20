@@ -1,7 +1,7 @@
 const AppError = require("../../core/errors/AppError");
 const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./report-card.repository");
-const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGURATION, gradeFor, sum, mergeAssessmentScores, hasCompleteAssessmentScores, rankByAverage, reportCardPublicationState, reportCardPortalPublicationUpdate } = require("./report-card.utils");
+const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGURATION, MAX_ASSESSMENT_COMPONENTS, gradeFor, sum, mergeAssessmentScores, hasCompleteAssessmentScores, rankByAverage, reportCardPublicationState, reportCardPortalPublicationUpdate } = require("./report-card.utils");
 const { prisma } = require("../../config/database");
 const { isSubjectAvailable } = require("../../core/utils/subject-availability");
 const { hasPermission } = require("../../core/middleware/authorization.middleware");
@@ -17,7 +17,13 @@ const getConfiguration = async (user) => {
 	const schoolId = user.schoolId || null;
 	const scopeKey = schoolId ? `school:${schoolId}` : "default";
 	const stored = await repository.findConfiguration(scopeKey);
-	return stored || { ...DEFAULT_ASSESSMENT_CONFIGURATION, scopeKey, schoolId };
+	const configuration = stored || { ...DEFAULT_ASSESSMENT_CONFIGURATION, scopeKey, schoolId };
+	return {
+		...configuration,
+		firstTestMax: Math.min(Number(configuration.firstTestMax), MAX_ASSESSMENT_COMPONENTS.firstTestMax),
+		secondTestMax: Math.min(Number(configuration.secondTestMax), MAX_ASSESSMENT_COMPONENTS.secondTestMax),
+		examMax: Math.min(Number(configuration.examMax), MAX_ASSESSMENT_COMPONENTS.examMax)
+	};
 };
 
 const updateConfiguration = async (data, user) => {
@@ -182,7 +188,7 @@ const saveEntries = async (data, user) => {
 				data: { studentId: item.studentId, sessionId: data.sessionId, termId: data.termId, classId: schoolClass.id }
 			});
 			const existingEntry = await tx.reportCardEntry.findUnique({ where: { reportCardId_subjectId: { reportCardId: report.id, subjectId: data.subjectId } } });
-			if (!existingEntry && !["firstTest", "secondTest", "exam"].some((field) => item[field] !== undefined)) {
+			if (!existingEntry && !["firstTest", "secondTest", "exam"].some((field) => item[field] != null)) {
 				throw new AppError("Enter at least one score before saving a new subject result.", 422, "RESULT_SCORE_REQUIRED");
 			}
 			const scores = mergeAssessmentScores(item, existingEntry || {});

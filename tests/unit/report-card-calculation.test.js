@@ -1,17 +1,66 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGURATION, mergeAssessmentScores, hasCompleteAssessmentScores, rankByAverage, reportCardPublicationState, reportCardPortalPublicationUpdate } = require("../../src/modules/report-cards/report-card.utils");
-const { batchResultSchema } = require("../../src/modules/report-cards/report-card.validator");
+const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGURATION, MAX_ASSESSMENT_COMPONENTS, mergeAssessmentScores, hasCompleteAssessmentScores, rankByAverage, reportCardPublicationState, reportCardPortalPublicationUpdate } = require("../../src/modules/report-cards/report-card.utils");
+const { assessmentConfigurationSchema, batchResultSchema } = require("../../src/modules/report-cards/report-card.validator");
 const { canManageResults } = require("../../src/modules/report-cards/report-card.service");
+const reportCardRepository = require("../../src/modules/report-cards/report-card.repository");
+const reportCardService = require("../../src/modules/report-cards/report-card.service");
 
-test("calculates totals and grades from configured component maxima", () => {
-  const result = calculateAssessment({ firstTest: 15, secondTest: 18, exam: 55 });
+test("calculates totals and grades from the fixed component maxima", () => {
+  const result = calculateAssessment({ firstTest: 15, secondTest: 18, exam: 45 });
 
-  assert.equal(result.total, 88);
-  assert.equal(result.totalPossible, 100);
-  assert.equal(result.percentage, 88);
+  assert.equal(result.total, 78);
+  assert.equal(result.totalPossible, 90);
+  assert.equal(result.percentage, (78 / 90) * 100);
   assert.equal(result.grade, "A");
   assert.equal(result.remark, "Excellent");
+});
+
+test("caps configured assessment maxima at 20 for each CA and 50 for the exam", () => {
+  assert.deepEqual(MAX_ASSESSMENT_COMPONENTS, { firstTestMax: 20, secondTestMax: 20, examMax: 50 });
+  assert.deepEqual({
+    firstTestMax: DEFAULT_ASSESSMENT_CONFIGURATION.firstTestMax,
+    secondTestMax: DEFAULT_ASSESSMENT_CONFIGURATION.secondTestMax,
+    examMax: DEFAULT_ASSESSMENT_CONFIGURATION.examMax
+  }, { firstTestMax: 20, secondTestMax: 20, examMax: 50 });
+  assert.equal(calculateAssessment({ firstTest: 20, secondTest: 20, exam: 50 }, {
+    firstTestMax: 20,
+    secondTestMax: 20,
+    examMax: 60,
+    gradeBands: DEFAULT_ASSESSMENT_CONFIGURATION.gradeBands
+  }).totalPossible, 90);
+  assert.throws(() => calculateAssessment({ firstTest: 20.01, secondTest: 0, exam: 0 }), /firstTest must be between 0 and 20/);
+  assert.throws(() => calculateAssessment({ firstTest: 0, secondTest: 0, exam: 50.01 }), /exam must be between 0 and 50/);
+});
+
+test("rejects assessment configurations above the score-entry maxima", () => {
+  const configuration = {
+    firstTestMax: 20,
+    secondTestMax: 20,
+    examMax: 50,
+    gradeBands: DEFAULT_ASSESSMENT_CONFIGURATION.gradeBands
+  };
+  assert.equal(assessmentConfigurationSchema.safeParse(configuration).success, true);
+  assert.equal(assessmentConfigurationSchema.safeParse({ ...configuration, firstTestMax: 21 }).success, false);
+  assert.equal(assessmentConfigurationSchema.safeParse({ ...configuration, examMax: 60 }).success, false);
+});
+
+test("clamps existing school settings to the new score-entry maxima", async () => {
+  const originalFindConfiguration = reportCardRepository.findConfiguration;
+  reportCardRepository.findConfiguration = async () => ({
+    firstTestMax: 20,
+    secondTestMax: 20,
+    examMax: 60,
+    gradeBands: DEFAULT_ASSESSMENT_CONFIGURATION.gradeBands
+  });
+  try {
+    const configuration = await reportCardService.getConfiguration({ schoolId: "school-1" });
+    assert.equal(configuration.firstTestMax, 20);
+    assert.equal(configuration.secondTestMax, 20);
+    assert.equal(configuration.examMax, 50);
+  } finally {
+    reportCardRepository.findConfiguration = originalFindConfiguration;
+  }
 });
 
 test("uses school-configured maxima and grade bands", () => {

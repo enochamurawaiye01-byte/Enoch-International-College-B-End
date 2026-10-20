@@ -1,8 +1,13 @@
 const sum = (values) => values.reduce((total, value) => total + (value == null ? 0 : Number(value)), 0);
+const MAX_ASSESSMENT_COMPONENTS = Object.freeze({
+	firstTestMax: 20,
+	secondTestMax: 20,
+	examMax: 50
+});
 const DEFAULT_ASSESSMENT_CONFIGURATION = Object.freeze({
 	firstTestMax: 20,
 	secondTestMax: 20,
-	examMax: 60,
+	examMax: 50,
 	gradeBands: [
 		{ minimum: 70, grade: "A", remark: "Excellent" },
 		{ minimum: 60, grade: "B", remark: "Very Good" },
@@ -14,9 +19,9 @@ const DEFAULT_ASSESSMENT_CONFIGURATION = Object.freeze({
 
 const calculateAssessment = (scores, configuration = DEFAULT_ASSESSMENT_CONFIGURATION) => {
 	const components = [
-		["firstTest", configuration.firstTestMax],
-		["secondTest", configuration.secondTestMax],
-		["exam", configuration.examMax]
+		["firstTest", Math.min(Number(configuration.firstTestMax), MAX_ASSESSMENT_COMPONENTS.firstTestMax)],
+		["secondTest", Math.min(Number(configuration.secondTestMax), MAX_ASSESSMENT_COMPONENTS.secondTestMax)],
+		["exam", Math.min(Number(configuration.examMax), MAX_ASSESSMENT_COMPONENTS.examMax)]
 	];
 	for (const [field, maximum] of components) {
 		const value = Number(scores[field] ?? 0);
@@ -87,6 +92,7 @@ const reportCardPortalPublicationUpdate = (portal, published, otherPortalPublish
 });
 
 module.exports = {
+	MAX_ASSESSMENT_COMPONENTS,
 	DEFAULT_ASSESSMENT_CONFIGURATION,
 	calculateAssessment,
 	mergeAssessmentScores,
