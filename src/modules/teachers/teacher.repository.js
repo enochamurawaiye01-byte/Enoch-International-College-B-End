@@ -5,7 +5,9 @@ const findById = (id) => prisma.staff.findUnique({ where: { id }, include });
 const findByUserId = (userId) => prisma.staff.findUnique({ where: { userId }, include });
 const findAll = () => prisma.staff.findMany({
  where: {
+  status: "ACTIVE",
   user: {
+   status: "ACTIVE",
    OR: [
     { role: { in: [...TEACHING_ROLES] } },
     {

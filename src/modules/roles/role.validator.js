@@ -14,5 +14,10 @@ const roleAssignmentSchema = z.object({
 }).strict()
   .refine((data) => Boolean(data.roleId) !== Boolean(data.roleIds), "Provide either roleId or a non-empty roleIds array.")
   .refine((data) => !data.roleIds || new Set(data.roleIds).size === data.roleIds.length, "Role assignments must not contain duplicates.");
+const roleRevokeSchema = z.object({
+  userId: uuid,
+  roleId: roleReference.optional(),
+  roleName: roleReference.optional()
+}).strict().refine((data) => Boolean(data.roleId) !== Boolean(data.roleName), "Provide either roleId or roleName.");
 const userRoleSchema = z.object({ role: systemRole }).strict();
-module.exports = { createRoleSchema, updateRoleSchema, roleAssignmentSchema, userRoleSchema };
+module.exports = { createRoleSchema, updateRoleSchema, roleAssignmentSchema, roleRevokeSchema, userRoleSchema };

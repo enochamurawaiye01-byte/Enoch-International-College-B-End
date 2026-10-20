@@ -239,6 +239,65 @@ test("role assignment workflows", async (t) => {
     }
   });
 
+  await t.test("role revocation removes only the selected role and preserves the user's primary role", async () => {
+    const originals = {
+      findUser: roleRepository.findUser,
+      findAssignments: roleRepository.findUserAssignments,
+      findByName: roleRepository.findByName,
+      transaction: prisma.$transaction,
+      auditCreate: prisma.auditLog.create
+    };
+    const targetUser = {
+      id: "teacher-user",
+      fullName: "Teacher User",
+      email: null,
+      role: "TEACHER",
+      status: "ACTIVE",
+      schoolId: "school-1",
+      student: null
+    };
+    const classTeacherRole = { id: "class-teacher-role-id", name: "CLASS_TEACHER", isActive: true };
+    let revokedRoleIds = [];
+    roleRepository.findUser = async () => targetUser;
+    roleRepository.findByName = async (name) => name === classTeacherRole.name ? classTeacherRole : null;
+    roleRepository.findUserAssignments = async () => [{
+      id: "class-teacher-assignment",
+      userId: targetUser.id,
+      roleId: classTeacherRole.id,
+      status: "ACTIVE",
+      role: classTeacherRole
+    }];
+    roleRepository.findByName = async (name) => name === classTeacherRole.name ? classTeacherRole : null;
+    prisma.$transaction = async (callback) => callback({
+      userRoleAssignment: {
+        update: async ({ where, data }) => {
+          revokedRoleIds.push(where.userId_roleId.roleId);
+          return { ...where.userId_roleId, ...data };
+        },
+        findMany: async () => [{ role: { name: "TEACHER" } }],
+      },
+      user: { update: async () => ({}) },
+      userSession: { deleteMany: async () => ({ count: 1 }) },
+      notification: { updateMany: async () => ({ count: 0 }) }
+    });
+    prisma.auditLog.create = async () => ({ id: "audit-id" });
+
+    try {
+      await roleService.revokeRole(
+        { userId: targetUser.id, roleName: classTeacherRole.name },
+        { userId: "admin-user", role: "ADMIN" }
+      );
+      assert.deepEqual(revokedRoleIds, [classTeacherRole.id]);
+      assert.equal(targetUser.role, "TEACHER");
+    } finally {
+      roleRepository.findUser = originals.findUser;
+      roleRepository.findUserAssignments = originals.findAssignments;
+      roleRepository.findByName = originals.findByName;
+      prisma.$transaction = originals.transaction;
+      prisma.auditLog.create = originals.auditCreate;
+    }
+  });
+
   await t.test("changes remove revoked assignments and restore the default account role", async () => {
     const originals = {
       findUser: roleRepository.findUser,

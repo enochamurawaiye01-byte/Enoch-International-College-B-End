@@ -602,7 +602,8 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
       orderBy: { assignedAt: "asc" }
     });
     const nextPrimary = activeAssignments.find((assignment) => targetRoleIds.has(assignment.roleId));
-    const nextPrimaryName = nextPrimary?.role.name || "STAFF";
+    const nextPrimaryName = nextPrimary?.role.name
+      || (targetDbRoles.some((role) => role.name === targetUser.role) ? targetUser.role : "STAFF");
     if (Object.values(UserRole).includes(nextPrimaryName)) {
       await tx.user.update({ where: { id: userId }, data: { role: nextPrimaryName } });
     }
@@ -651,6 +652,77 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
   };
 };
 
+const revokeRole = async ({ userId, roleId, roleName }, actor) => {
+  if (!actor || !["SUPER_ADMIN", "ADMIN"].includes(actor.role)) {
+    await auditDeniedRoleAction(actor, userId, "UNAUTHORIZED_ROLE_REVOCATION_ATTEMPT");
+    throw new AppError("Only authorized administrators can revoke staff roles.", 403, "ROLE_MANAGEMENT_DENIED");
+  }
+  const targetUser = await repository.findUser(userId);
+  if (!targetUser) throw new NotFoundError("Target user not found");
+  assertNotProtectedSuperAdmin(targetUser);
+  if (userId === actor.userId) {
+    throw new AppError("You cannot revoke roles from your own account.", 403, "SELF_ROLE_CHANGE_DENIED");
+  }
+
+  let role = roleId ? await repository.findById(roleId) : await repository.findByName(roleName);
+  if (!role) throw new NotFoundError("Role not found");
+  if (role.name === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") {
+    throw new AppError("Only a SUPER_ADMIN can revoke the SUPER_ADMIN role.", 403, "ROLE_ESCALATION_DENIED");
+  }
+
+  const assignments = await repository.findUserAssignments(userId);
+  const assignment = assignments.find((item) => item.roleId === role.id
+    && ["ACTIVE", "PENDING"].includes(item.status));
+  if (!assignment && targetUser.role !== role.name) {
+    throw new AppError("This user does not currently have that role.", 409, "ROLE_ASSIGNMENT_NOT_FOUND");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (role.name === "SUPER_ADMIN") {
+      await repository.lockSuperAdminLimit(tx);
+      if (await repository.countActiveSuperAdmins(tx) <= 1) {
+        throw new AppError("The last available SUPER_ADMIN cannot be removed.", 409, "LAST_SUPER_ADMIN_PROTECTED");
+      }
+    }
+    if (assignment) {
+      await tx.userRoleAssignment.update({
+        where: { userId_roleId: { userId, roleId: role.id } },
+        data: {
+          status: "REMOVED",
+          removedAt: new Date(),
+          activationToken: null,
+          activationExpiresAt: null
+        }
+      });
+      await tx.notification.updateMany({
+        where: { userId, roleAssignmentId: assignment.id, status: "UNREAD" },
+        data: { status: "READ", readAt: new Date() }
+      });
+    }
+    if (targetUser.role === role.name) {
+      const remainingAssignments = await tx.userRoleAssignment.findMany({
+        where: { userId, status: "ACTIVE", role: { isActive: true }, roleId: { not: role.id } },
+        include: { role: { select: { name: true } } },
+        orderBy: { assignedAt: "asc" }
+      });
+      await tx.user.update({
+        where: { id: userId },
+        data: { role: remainingAssignments[0]?.role.name || "STAFF" }
+      });
+    }
+    await tx.userSession.deleteMany({ where: { userId } });
+  });
+
+  await audit(prisma, actor.userId, "ROLE_REVOKED", "User", userId, `Revoked role ${role.name}`);
+  return {
+    success: true,
+    userId,
+    role: role.name,
+    user: await repository.findUser(userId),
+    assignments: await repository.findUserAssignments(userId)
+  };
+};
+
 module.exports = {
   create,
   getAll,
@@ -660,5 +732,6 @@ module.exports = {
   assignRoles,
   activateRole,
   changeUserRoles,
+  revokeRole,
   buildRoleActivationUrl
 };

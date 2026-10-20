@@ -16,6 +16,15 @@ const assign = async (req, res, next) => {
   }
 };
 
+const revokeRole = async (req, res, next) => {
+  try {
+    const result = await service.revokeRole(req.body, req.user);
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const activateRole = async (req, res, next) => {
   try {
     const result = await service.activateRole({ token: req.body.token, assignmentId: req.body.assignmentId }, req.user);
@@ -53,4 +62,4 @@ const testEmail = async (req, res, next) => {
   }
 };
 
-module.exports = { create, getAll, getById, update, remove, assign, activateRole, changeUserRole, testEmail };
+module.exports = { create, getAll, getById, update, remove, assign, revokeRole, activateRole, changeUserRole, testEmail };

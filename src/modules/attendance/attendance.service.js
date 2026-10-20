@@ -4,6 +4,8 @@ const repository = require("./attendance.repository");
 const { startOfDay } = require("./attendance.utils");
 
 const isAdmin = (role) => ["SUPER_ADMIN", "ADMIN", "MANAGEMENT", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER"].includes(role);
+const isClassTeacher = (staff) => staff?.user?.role === "CLASS_TEACHER"
+	|| staff?.user?.roleAssignments?.some(({ role }) => role.name === "CLASS_TEACHER");
 
 const validateReferences = async (data) => {
 	const [student, session, term, enrollment] = await Promise.all([repository.findStudent(data.studentId), repository.findSession(data.sessionId), repository.findTerm(data.termId), repository.findEnrollment(data.studentId, data.sessionId, data.termId)]);
@@ -20,11 +22,15 @@ const assertTeacherAccess = async (user, classId, sessionId, termId) => {
 	if (!classId) throw new AppError("Attendance is not associated with a class.", 403, "CLASS_ASSIGNMENT_REQUIRED");
 	const staff = await repository.findStaffByUserId(user.userId || user.id);
 	if (!staff) throw new AppError("Only assigned teachers or administrators can manage attendance.", 403, "ATTENDANCE_ACCESS_DENIED");
-	if (user.role === "CLASS_TEACHER") {
-		if (!(await repository.findClassTeacherAssignment(staff.id, classId, sessionId))) {
+	if (isClassTeacher(staff)) {
+		if (await repository.findClassTeacherAssignment(staff.id, classId, sessionId)) return;
+		if (staff.user.role === "CLASS_TEACHER"
+			|| staff.user.roleAssignments?.some(({ role }) => role.name === "CLASS_TEACHER")) {
 			throw new AppError("You are not assigned as this class's teacher for the selected session.", 403, "CLASS_ASSIGNMENT_REQUIRED");
 		}
-		return;
+	}
+	if (user.role === "CLASS_TEACHER") {
+		throw new AppError("You are not assigned as this class's teacher for the selected session.", 403, "CLASS_ASSIGNMENT_REQUIRED");
 	}
 	if (user.role !== "TEACHER" || !(await repository.findAssignment(staff.id, classId, sessionId, termId))) {
 		throw new AppError("You are not assigned to this student's class.", 403, "CLASS_ASSIGNMENT_REQUIRED");
@@ -84,7 +90,9 @@ const update = async (id, data, user) => {
 };
 
 const getAll = async (query, user) => {
-	if (!isAdmin(user.role) && !["TEACHER", "CLASS_TEACHER"].includes(user.role)) {
+	if (!isAdmin(user.role) && !["TEACHER", "CLASS_TEACHER"].includes(user.role)
+		&& !(await repository.findEffectiveTeachingRoles(user.userId || user.id))
+			.has("CLASS_TEACHER")) {
 		throw new AppError("Only assigned teachers or administrators can view attendance.", 403, "ATTENDANCE_ACCESS_DENIED");
 	}
 	const where = {};
@@ -95,9 +103,12 @@ const getAll = async (query, user) => {
 	if (query.date) { const date = startOfDay(query.date); where.date = date; }
 	if (query.from || query.to) where.date = { ...(query.from ? { gte: startOfDay(query.from) } : {}), ...(query.to ? { lte: startOfDay(query.to) } : {}) };
 	if (!isAdmin(user.role)) {
-		const classIds = user.role === "CLASS_TEACHER"
-			? await repository.findClassTeacherClassIds(user.userId || user.id, query.sessionId)
-			: await repository.findTeacherClassIds(user.userId || user.id, query.sessionId, query.termId);
+		const userId = user.userId || user.id;
+		const [classTeacherClassIds, subjectTeacherClassIds] = await Promise.all([
+			repository.findClassTeacherClassIds(userId, query.sessionId),
+			repository.findTeacherClassIds(userId, query.sessionId, query.termId)
+		]);
+		const classIds = [...new Set([...(classTeacherClassIds || []), ...(subjectTeacherClassIds || [])])];
 		if (!classIds?.length) return [];
 		where.classId = query.classId
 			? (classIds.includes(query.classId) ? query.classId : { in: [] })

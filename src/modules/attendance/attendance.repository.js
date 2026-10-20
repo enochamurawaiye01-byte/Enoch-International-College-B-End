@@ -18,7 +18,20 @@ const findActiveClassRoster = (classId, sessionId, termId) => prisma.enrollment.
 	},
 	orderBy: [{ student: { lastName: "asc" } }, { student: { firstName: "asc" } }],
 });
-const findStaffByUserId = (userId) => prisma.staff.findUnique({ where: { userId } });
+const findStaffByUserId = (userId) => prisma.staff.findUnique({
+	where: { userId },
+	include: {
+		user: {
+			select: {
+				role: true,
+				roleAssignments: {
+					where: { status: "ACTIVE", role: { isActive: true } },
+					select: { role: { select: { name: true } } }
+				}
+			}
+		}
+	}
+});
 const findAssignment = (staffId, classId, sessionId, termId) => prisma.teacherAssignment.findFirst({ where: { staffId, classId, AND: [{ OR: [{ sessionId: null }, { sessionId }] }, { OR: [{ termId: null }, { termId }] }] } });
 const findClassTeacherAssignment = (staffId, classId, sessionId) => prisma.classTeacherAssignment.findUnique({ where: { classId_sessionId: { classId, sessionId } }, select: { id: true, staffId: true } }).then((assignment) => assignment?.staffId === staffId ? assignment : null);
 const findClassTeacherClassIds = async (userId, sessionId) => {
@@ -62,10 +75,25 @@ const findTeacherClassIds = async (userId, sessionId, termId) => {
 	const assignments = await prisma.teacherAssignment.findMany({ where: { staffId: staff.id, AND: [{ OR: [{ sessionId: null }, { sessionId }] }, { OR: [{ termId: null }, { termId }] }] }, select: { classId: true } });
 	return assignments.map((assignment) => assignment.classId);
 };
+const findEffectiveTeachingRoles = async (userId) => {
+	const user = await prisma.user.findUnique({
+		where: { id: userId },
+		select: {
+			role: true,
+			roleAssignments: {
+				where: { status: "ACTIVE", role: { isActive: true } },
+				select: { role: { select: { name: true } } }
+			}
+		}
+	});
+	if (!user) return new Set();
+	return new Set([user.role, ...(user.roleAssignments || []).map(({ role }) => role.name)]);
+};
 
 module.exports = {
 	findStudent, findSession, findTerm, findEnrollment, findEnrollments, findClassById,
 	findActiveClassRoster, findRosterAttendance,
 	findStaffByUserId, findAssignment, findClassTeacherAssignment, findClassTeacherClassIds,
 	findById, findDuplicate, findDuplicates, create, saveMany, update, findAll, findTeacherClassIds,
+	findEffectiveTeachingRoles,
 };
