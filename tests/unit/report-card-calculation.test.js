@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGURATION, reportCardPublicationState, reportCardPortalPublicationUpdate } = require("../../src/modules/report-cards/report-card.utils");
+const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGURATION, mergeAssessmentScores, hasCompleteAssessmentScores, rankByAverage, reportCardPublicationState, reportCardPortalPublicationUpdate } = require("../../src/modules/report-cards/report-card.utils");
+const { batchResultSchema } = require("../../src/modules/report-cards/report-card.validator");
 const { canManageResults } = require("../../src/modules/report-cards/report-card.service");
 
 test("calculates totals and grades from configured component maxima", () => {
@@ -33,6 +34,53 @@ test("rejects negative, non-finite, and over-maximum scores", () => {
   assert.throws(() => calculateAssessment({ firstTest: -1, secondTest: 0, exam: 0 }), /firstTest must be between/);
   assert.throws(() => calculateAssessment({ firstTest: 0, secondTest: 20.01, exam: 0 }), /secondTest must be between/);
   assert.throws(() => calculateAssessment({ firstTest: Number.NaN, secondTest: 0, exam: 0 }), /firstTest must be between/);
+});
+
+test("allows staged CA entry while preserving previously saved scores", () => {
+  const firstSave = mergeAssessmentScores({ firstTest: 12 }, {});
+  assert.deepEqual(firstSave, { firstTest: 12, secondTest: null, exam: null });
+  assert.equal(hasCompleteAssessmentScores(firstSave), false);
+
+  const laterSave = mergeAssessmentScores({ secondTest: 16 }, firstSave);
+  assert.deepEqual(laterSave, { firstTest: 12, secondTest: 16, exam: null });
+  assert.equal(hasCompleteAssessmentScores(laterSave), false);
+
+  const completed = mergeAssessmentScores({ exam: 45 }, laterSave);
+  assert.deepEqual(completed, { firstTest: 12, secondTest: 16, exam: 45 });
+  assert.equal(hasCompleteAssessmentScores(completed), true);
+  assert.equal(calculateAssessment(completed).total, 73);
+});
+
+test("ranks complete report averages and gives tied averages the same position", () => {
+  assert.deepEqual(rankByAverage([
+    { id: "third", average: 68 },
+    { id: "first", average: 92 },
+    { id: "tied", average: 92 },
+    { id: "fourth", average: 54 },
+  ]), [
+    { id: "first", position: 1 },
+    { id: "tied", position: 1 },
+    { id: "third", position: 3 },
+    { id: "fourth", position: 4 },
+  ]);
+});
+
+test("batch score entry accepts partial components for staged saves", () => {
+  const payload = {
+    classId: "123e4567-e89b-12d3-a456-426614174000",
+    subjectId: "123e4567-e89b-12d3-a456-426614174001",
+    sessionId: "123e4567-e89b-12d3-a456-426614174002",
+    termId: "123e4567-e89b-12d3-a456-426614174003",
+    entries: [{
+      studentId: "123e4567-e89b-12d3-a456-426614174004",
+      firstTest: 14,
+    }],
+  };
+  assert.equal(batchResultSchema.safeParse(payload).success, true);
+  assert.equal(batchResultSchema.safeParse({
+    ...payload,
+    entries: [{ studentId: payload.entries[0].studentId }],
+  }).success, false);
 });
 
 test("disables third-term assessments only for graduating classes", () => {

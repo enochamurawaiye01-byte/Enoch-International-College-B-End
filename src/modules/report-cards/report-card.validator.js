@@ -27,11 +27,11 @@ const assessmentConfigurationSchema = z.object({
 }).strict();
 const resultEntrySchema = z.object({
 	studentId: uuid,
-	firstTest: z.coerce.number().min(0),
-	secondTest: z.coerce.number().min(0),
-	exam: z.coerce.number().min(0),
+	firstTest: score,
+	secondTest: score,
+	exam: score,
 	teacherComment: z.string().trim().max(500).optional().nullable()
-}).strict();
+}).strict().refine((item) => ["firstTest", "secondTest", "exam"].some((field) => item[field] !== undefined) || item.teacherComment !== undefined, "Provide at least one score or a teacher comment.");
 const batchResultSchema = z.object({
 	classId: uuid,
 	subjectId: uuid,

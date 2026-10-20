@@ -20,7 +20,13 @@ const getStudentTranscript = async (studentId, user) => {
     const student = await prisma.student.findUnique({
         where: { id: studentId },
         include: {
-            user: { select: { email: true, phoneNumber: true } },
+            user: {
+                select: {
+                    email: true,
+                    phoneNumber: true,
+                    school: { select: { name: true, motto: true, address: true, city: true, state: true, phone: true, email: true, logoUrl: true } }
+                }
+            },
             currentClass: true,
             enrollments: {
                 where: { status: "ACTIVE", session: { isActive: true } },
@@ -35,6 +41,7 @@ const getStudentTranscript = async (studentId, user) => {
                 orderBy: { generatedAt: "asc" },
             },
             reportCards: {
+                ...(user?.role === "STUDENT" ? { where: { studentPublished: true } } : {}),
                 include: {
                     session: true,
                     term: true,
@@ -109,9 +116,10 @@ const getStudentTranscript = async (studentId, user) => {
         cumulativeAverage,
         overallGrade,
         sessions: resultsBySession,
+        school: student.user?.school || null,
         reportCards: student.reportCards,
         generatedAt: new Date().toISOString(),
     };
 };
 
-module.exports = { getCsv, getStudentTranscript };
+module.exports = { getCsv, getStudentTranscript };

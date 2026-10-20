@@ -42,6 +42,27 @@ const calculateAssessment = (scores, configuration = DEFAULT_ASSESSMENT_CONFIGUR
 	};
 };
 
+const mergeAssessmentScores = (submitted, existing = {}) => ({
+	firstTest: submitted.firstTest !== undefined ? submitted.firstTest : existing.firstTest ?? null,
+	secondTest: submitted.secondTest !== undefined ? submitted.secondTest : existing.secondTest ?? null,
+	exam: submitted.exam !== undefined ? submitted.exam : existing.exam ?? null
+});
+
+const hasCompleteAssessmentScores = (scores) =>
+	["firstTest", "secondTest", "exam"].every((field) => scores[field] !== null && scores[field] !== undefined);
+
+const rankByAverage = (reports) => {
+	const ranked = [...reports].sort((left, right) => Number(right.average) - Number(left.average));
+	let previousAverage = null;
+	let position = 0;
+	return ranked.map((report, index) => {
+		const average = Number(report.average);
+		if (previousAverage === null || average !== previousAverage) position = index + 1;
+		previousAverage = average;
+		return { id: report.id, position };
+	});
+};
+
 const gradeFor = (percentage, gradeBands = DEFAULT_ASSESSMENT_CONFIGURATION.gradeBands) => {
 	const value = Number(percentage);
 	return [...gradeBands]
@@ -68,6 +89,9 @@ const reportCardPortalPublicationUpdate = (portal, published, otherPortalPublish
 module.exports = {
 	DEFAULT_ASSESSMENT_CONFIGURATION,
 	calculateAssessment,
+	mergeAssessmentScores,
+	hasCompleteAssessmentScores,
+	rankByAverage,
 	canEnterTermAssessment,
 	gradeFor,
 	sum,

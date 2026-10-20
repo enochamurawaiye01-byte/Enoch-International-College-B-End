@@ -1,7 +1,7 @@
 const AppError = require("../../core/errors/AppError");
 const NotFoundError = require("../../core/errors/NotFoundError");
 const repository = require("./report-card.repository");
-const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGURATION, gradeFor, sum, reportCardPublicationState, reportCardPortalPublicationUpdate } = require("./report-card.utils");
+const { calculateAssessment, canEnterTermAssessment, DEFAULT_ASSESSMENT_CONFIGURATION, gradeFor, sum, mergeAssessmentScores, hasCompleteAssessmentScores, rankByAverage, reportCardPublicationState, reportCardPortalPublicationUpdate } = require("./report-card.utils");
 const { prisma } = require("../../config/database");
 const { isSubjectAvailable } = require("../../core/utils/subject-availability");
 const { hasPermission } = require("../../core/middleware/authorization.middleware");
@@ -123,9 +123,9 @@ const getEntrySheet = async (query, user) => {
 			registrationNumber: student.registrationNumber,
 			email: student.user.email,
 			scores: entry ? {
-				firstTest: Number(entry.firstTest || 0),
-				secondTest: Number(entry.secondTest || 0),
-				exam: Number(entry.exam || 0),
+				firstTest: entry.firstTest == null ? null : Number(entry.firstTest),
+				secondTest: entry.secondTest == null ? null : Number(entry.secondTest),
+				exam: entry.exam == null ? null : Number(entry.exam),
 				total: Number(entry.total || 0),
 				grade: entry.grade,
 				remark: entry.remark,
@@ -146,8 +146,8 @@ const getEntrySheet = async (query, user) => {
 			gradeBands: configuration.gradeBands
 		},
 		students,
-		submitted: students.filter((student) => student.scores).length,
-		pending: students.filter((student) => !student.scores).length
+		submitted: students.filter((student) => student.scores && hasCompleteAssessmentScores(student.scores)).length,
+		pending: students.filter((student) => !student.scores || !hasCompleteAssessmentScores(student.scores)).length
 	};
 };
 
@@ -182,7 +182,21 @@ const saveEntries = async (data, user) => {
 				data: { studentId: item.studentId, sessionId: data.sessionId, termId: data.termId, classId: schoolClass.id }
 			});
 			const existingEntry = await tx.reportCardEntry.findUnique({ where: { reportCardId_subjectId: { reportCardId: report.id, subjectId: data.subjectId } } });
-			const calculated = calculateAssessment(item, configuration);
+			if (!existingEntry && !["firstTest", "secondTest", "exam"].some((field) => item[field] !== undefined)) {
+				throw new AppError("Enter at least one score before saving a new subject result.", 422, "RESULT_SCORE_REQUIRED");
+			}
+			const scores = mergeAssessmentScores(item, existingEntry || {});
+			if (!hasCompleteAssessmentScores(scores) && (
+				existingReport?.studentPublished || existingReport?.parentPublished || existingReport?.published
+			)) {
+				throw new AppError("Published results cannot be changed to an incomplete score.", 409, "REPORT_CARD_INCOMPLETE");
+			}
+			let calculated;
+			try {
+				calculated = calculateAssessment(scores, configuration);
+			} catch (error) {
+				throw new AppError(error.message, 422, "SCORE_OUT_OF_RANGE", { field: error.field, studentId: item.studentId });
+			}
 			const entry = await tx.reportCardEntry.upsert({
 				where: { reportCardId_subjectId: { reportCardId: report.id, subjectId: data.subjectId } },
 				create: {
@@ -191,9 +205,9 @@ const saveEntries = async (data, user) => {
 					teacherId: staffId,
 					createdById: user.userId,
 					updatedById: user.userId,
-					firstTest: item.firstTest,
-					secondTest: item.secondTest,
-					exam: item.exam,
+					firstTest: scores.firstTest,
+					secondTest: scores.secondTest,
+					exam: scores.exam,
 					total: calculated.total,
 					grade: calculated.grade,
 					remark: calculated.remark,
@@ -202,9 +216,9 @@ const saveEntries = async (data, user) => {
 				update: {
 					teacherId: staffId || existingEntry.teacherId,
 					updatedById: user.userId,
-					firstTest: item.firstTest,
-					secondTest: item.secondTest,
-					exam: item.exam,
+					firstTest: scores.firstTest,
+					secondTest: scores.secondTest,
+					exam: scores.exam,
 					total: calculated.total,
 					grade: calculated.grade,
 					remark: calculated.remark,
@@ -224,14 +238,16 @@ const saveEntries = async (data, user) => {
 				});
 			}
 			const allEntries = await tx.reportCardEntry.findMany({ where: { reportCardId: report.id } });
-			const totalScore = sum(allEntries.map((row) => row.total));
-			const totalPossible = allEntries.length * (Number(configuration.firstTestMax) + Number(configuration.secondTestMax) + Number(configuration.examMax));
+			const completeEntries = allEntries.filter(hasCompleteAssessmentScores);
+			const totalScore = sum(completeEntries.map((row) => row.total));
+			const totalPossible = completeEntries.length * (Number(configuration.firstTestMax) + Number(configuration.secondTestMax) + Number(configuration.examMax));
 			await tx.reportCard.update({
 				where: { id: report.id },
 				data: { classId: schoolClass.id, totalScore, totalPossible, average: totalPossible ? (totalScore / totalPossible) * 100 : 0 }
 			});
 			resultRows.push(entry);
 		}
+		await updateClassPositions(tx, schoolClass.id, data.sessionId, data.termId);
 		return resultRows;
 	});
 
@@ -296,6 +312,10 @@ const validateLegacyReport = async (data) => {
 };
 
 const buildData = (data, configuration) => {
+	const subjectIds = data.entries.map((item) => item.subjectId);
+	if (new Set(subjectIds).size !== subjectIds.length) {
+		throw new AppError("A subject can appear only once on a student report card.", 409, "DUPLICATE_SUBJECT_RESULT");
+	}
 	const entries = data.entries.map((item) => {
 		const calculated = calculateAssessment(item, configuration);
 		return {
@@ -382,6 +402,44 @@ const assertReportComplete = async (tx, report) => {
 	const completedIds = new Set(report.entries.map((entry) => classSubjects.find((classSubject) => classSubject.subjectId === entry.subjectId)?.id).filter(Boolean));
 	const missingCount = expectedSubjectIds.filter((id) => !completedIds.has(id)).length;
 	if (!expectedSubjectIds.length || missingCount) throw new AppError("Every registered subject must have a result before publishing.", 409, "REPORT_CARD_INCOMPLETE", { missingSubjects: missingCount });
+	const incompleteCount = report.entries.filter((entry) => expectedSubjectIds.some((id) =>
+		classSubjects.find((item) => item.id === id)?.subjectId === entry.subjectId
+	) && !hasCompleteAssessmentScores(entry)).length;
+	if (incompleteCount) throw new AppError("Every registered subject must have all CA and examination scores before publishing.", 409, "REPORT_CARD_INCOMPLETE", { incompleteSubjects: incompleteCount });
+};
+
+const updateClassPositions = async (tx, classId, sessionId, termId) => {
+	const [enrollments, classSubjects, reports] = await Promise.all([
+		tx.enrollment.findMany({
+			where: { classId, sessionId, termId, status: "ACTIVE" },
+			include: { class: { include: { classLevel: true } }, subjectRegistrations: { include: { classSubject: true } } }
+		}),
+		tx.classSubject.findMany({
+			where: { classId, subject: { isActive: true } },
+			include: { subject: { include: { targets: { include: { classLevel: true } } } } }
+		}),
+		tx.reportCard.findMany({ where: { classId, sessionId, termId }, include: { entries: true } })
+	]);
+	const enrollmentByStudent = new Map(enrollments.map((enrollment) => [enrollment.studentId, enrollment]));
+	const reportsToRank = reports.filter((report) => {
+		const enrollment = enrollmentByStudent.get(report.studentId);
+		if (!enrollment) return false;
+		const expectedIds = enrollment.subjectRegistrations.length
+			? enrollment.subjectRegistrations.map((registration) => registration.classSubjectId)
+				.filter((id) => classSubjects.some((item) => item.id === id && isSubjectAvailable(item.subject, enrollment.class.classLevel.code, enrollment.departmentId)))
+			: classSubjects.filter(({ subject }) => isSubjectAvailable(subject, enrollment.class.classLevel.code, enrollment.departmentId)).map(({ id }) => id);
+		const entryBySubject = new Map(report.entries.map((entry) => [entry.subjectId, entry]));
+		return expectedIds.length > 0 && expectedIds.every((id) => {
+			const subjectId = classSubjects.find((item) => item.id === id)?.subjectId;
+			const entry = entryBySubject.get(subjectId);
+			return entry && hasCompleteAssessmentScores(entry);
+		});
+	});
+	const positions = new Map(rankByAverage(reportsToRank).map(({ id, position }) => [id, position]));
+	await Promise.all(reports.map((report) => tx.reportCard.update({
+		where: { id: report.id },
+		data: { position: positions.get(report.id) ?? null, classSize: enrollments.length || null }
+	})));
 };
 
 const publishClassTerm = async (data, user) => {
