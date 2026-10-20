@@ -14,7 +14,7 @@ const findAll = () => prisma.staff.findMany({
      roleAssignments: {
       some: {
        status: "ACTIVE",
-       role: { name: "CLASS_TEACHER", isActive: true }
+       role: { name: { in: [...TEACHING_ROLES] }, isActive: true }
       }
      }
     }

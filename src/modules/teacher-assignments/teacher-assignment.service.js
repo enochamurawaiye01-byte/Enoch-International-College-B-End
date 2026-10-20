@@ -5,10 +5,10 @@ const { getFileUrl } = require("../../config/storage");
 const { TEACHER_ASSIGNMENT_ERRORS: ERRORS } = require("./teacher-assignment.constants");
 const { isTeachingAccount } = require("../../core/utils/teaching-roles");
 
-const hasClassTeacherRole = (user) => user?.role === "CLASS_TEACHER"
+const hasTeachingRole = (user) => isTeachingAccount(user)
     || user?.roleAssignments?.some((assignment) =>
         assignment.status === "ACTIVE"
-        && assignment.role?.name === "CLASS_TEACHER"
+        && isTeachingAccount({ role: assignment.role?.name })
         && assignment.role.isActive !== false
     );
 
@@ -103,14 +103,19 @@ const assignClassTeacher = async (data, user) => {
         repository.findSession(data.sessionId)
     ]);
     if (!staff || staff.status !== "ACTIVE" || staff.user.status !== "ACTIVE") throw new AppError(ERRORS.STAFF_NOT_ACTIVE, 409, "STAFF_NOT_ACTIVE");
-    if (!hasClassTeacherRole(staff.user)) throw new AppError("Only staff with the CLASS_TEACHER role can be assigned as a class teacher.", 403, "CLASS_TEACHER_ROLE_REQUIRED");
+    if (!hasTeachingRole(staff.user)) throw new AppError("Only active teachers can be assigned as class teachers.", 403, "TEACHER_ROLE_REQUIRED");
     if (!schoolClass || !schoolClass.isActive) throw new AppError(ERRORS.CLASS_NOT_FOUND, 404, "CLASS_NOT_FOUND");
-    if (!session || !schoolClass.isActive) throw new AppError("Active class and academic session are required.", 404, "SESSION_OR_CLASS_NOT_FOUND");
+    if (!session) throw new AppError("An academic session is required.", 404, "SESSION_NOT_FOUND");
+    const classTeacherRole = await repository.findClassTeacherRole();
+    if (!classTeacherRole?.isActive) {
+        throw new AppError("The CLASS_TEACHER role is missing or inactive. Activate it in role management first.", 409, "CLASS_TEACHER_ROLE_NOT_CONFIGURED");
+    }
     const existingAssignment = await repository.findClassTeacherAssignmentByClassSession(schoolClass.id, session.id);
     if (existingAssignment) {
         if (existingAssignment.staffId !== staff.id) {
             throw new AppError("This class already has a class teacher for the selected academic session. Remove the existing assignment before assigning another teacher.", 409, "CLASS_TEACHER_ALREADY_ASSIGNED");
         }
+        await repository.ensureClassTeacherRole(staff.user.id, user.userId, staff.user.role);
         return existingAssignment;
     }
     try {
@@ -119,11 +124,16 @@ const assignClassTeacher = async (data, user) => {
         if (error.code === "P2002") {
             throw new AppError("This class already has a class teacher for the selected academic session. Refresh the assignments and try again.", 409, "CLASS_TEACHER_ALREADY_ASSIGNED");
         }
+        if (error.code === "CLASS_TEACHER_ROLE_NOT_CONFIGURED") {
+            throw new AppError(error.message, 409, error.code);
+        }
         throw error;
     }
 };
 const removeClassTeacher = async (id) => {
     if (!(await repository.findClassTeacherAssignment(id))) throw new AppError("Class teacher assignment not found.", 404, "CLASS_TEACHER_ASSIGNMENT_NOT_FOUND");
-    return repository.removeClassTeacherAssignment(id);
+    const removed = await repository.removeClassTeacherAssignment(id);
+    if (!removed) throw new AppError("Class teacher assignment could not be removed.", 409, "CLASS_TEACHER_ASSIGNMENT_REMOVE_FAILED");
+    return removed;
 };
 module.exports = { create, getAll, getById, remove, getClassTeachers, assignClassTeacher, removeClassTeacher };

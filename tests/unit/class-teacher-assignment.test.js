@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { prisma } = require("../../src/config/database");
 const repository = require("../../src/modules/teacher-assignments/teacher-assignment.repository");
 const service = require("../../src/modules/teacher-assignments/teacher-assignment.service");
 
@@ -8,16 +9,18 @@ test("only one class teacher may be assigned to a class in one session", async (
     findStaffById: repository.findStaffById,
     findClassById: repository.findClassById,
     findSession: repository.findSession,
+    findClassTeacherRole: repository.findClassTeacherRole,
     findClassTeacherAssignmentByClassSession: repository.findClassTeacherAssignmentByClassSession,
     saveClassTeacherAssignment: repository.saveClassTeacherAssignment,
   };
   repository.findStaffById = async () => ({
     id: "staff-2",
     status: "ACTIVE",
-    user: { status: "ACTIVE", role: "CLASS_TEACHER" },
+    user: { id: "user-2", status: "ACTIVE", role: "CLASS_TEACHER" },
   });
   repository.findClassById = async () => ({ id: "class-1", isActive: true });
   repository.findSession = async () => ({ id: "session-1" });
+  repository.findClassTeacherRole = async () => ({ id: "role-1", isActive: true });
   repository.findClassTeacherAssignmentByClassSession = async () => ({
     id: "assignment-1",
     staffId: "staff-1",
@@ -44,6 +47,8 @@ test("re-saving the same class teacher assignment is idempotent", async () => {
     findStaffById: repository.findStaffById,
     findClassById: repository.findClassById,
     findSession: repository.findSession,
+    findClassTeacherRole: repository.findClassTeacherRole,
+    ensureClassTeacherRole: repository.ensureClassTeacherRole,
     findClassTeacherAssignmentByClassSession: repository.findClassTeacherAssignmentByClassSession,
     saveClassTeacherAssignment: repository.saveClassTeacherAssignment,
   };
@@ -51,10 +56,12 @@ test("re-saving the same class teacher assignment is idempotent", async () => {
   repository.findStaffById = async () => ({
     id: "staff-1",
     status: "ACTIVE",
-    user: { status: "ACTIVE", role: "CLASS_TEACHER" },
+    user: { id: "user-1", status: "ACTIVE", role: "CLASS_TEACHER" },
   });
   repository.findClassById = async () => ({ id: "class-1", isActive: true });
   repository.findSession = async () => ({ id: "session-1" });
+  repository.findClassTeacherRole = async () => ({ id: "role-1", isActive: true });
+  repository.ensureClassTeacherRole = async () => {};
   repository.findClassTeacherAssignmentByClassSession = async () => existing;
   repository.saveClassTeacherAssignment = async () => {
     throw new Error("An existing assignment should be returned.");
@@ -73,11 +80,12 @@ test("re-saving the same class teacher assignment is idempotent", async () => {
   }
 });
 
-test("staff with an active CLASS_TEACHER role assignment can be assigned even when it is not their primary role", async () => {
+test("any active teacher can be assigned as class teacher without a pre-existing CLASS_TEACHER role", async () => {
   const originals = {
     findStaffById: repository.findStaffById,
     findClassById: repository.findClassById,
     findSession: repository.findSession,
+    findClassTeacherRole: repository.findClassTeacherRole,
     findClassTeacherAssignmentByClassSession: repository.findClassTeacherAssignmentByClassSession,
     saveClassTeacherAssignment: repository.saveClassTeacherAssignment,
   };
@@ -86,13 +94,15 @@ test("staff with an active CLASS_TEACHER role assignment can be assigned even wh
     id: "staff-2",
     status: "ACTIVE",
     user: {
+      id: "user-2",
       status: "ACTIVE",
       role: "TEACHER",
-      roleAssignments: [{ status: "ACTIVE", role: { name: "CLASS_TEACHER", isActive: true } }],
+      roleAssignments: [],
     },
   });
   repository.findClassById = async () => ({ id: "class-2", isActive: true });
   repository.findSession = async () => ({ id: "session-1" });
+  repository.findClassTeacherRole = async () => ({ id: "role-1", isActive: true });
   repository.findClassTeacherAssignmentByClassSession = async () => null;
   repository.saveClassTeacherAssignment = async (data) => ({ ...expected, ...data });
 
@@ -106,5 +116,53 @@ test("staff with an active CLASS_TEACHER role assignment can be assigned even wh
     );
   } finally {
     Object.assign(repository, originals);
+  }
+});
+
+test("class teacher assignment activates the role, preserves the prior teacher role, and refreshes sessions", async () => {
+  const originalTransaction = prisma.$transaction;
+  const roleUpserts = [];
+  const userUpdates = [];
+  let sessionInvalidations = 0;
+  const assignment = {
+    id: "assignment-3",
+    staffId: "staff-3",
+    staff: { userId: "user-3", user: { role: "TEACHER" } },
+  };
+  prisma.$transaction = async (callback) => callback({
+    classTeacherAssignment: { create: async () => assignment },
+    role: {
+      findUnique: async ({ where }) => ({
+        id: where.name === "CLASS_TEACHER" ? "class-teacher-role" : "teacher-role",
+        name: where.name,
+        isActive: true,
+      }),
+    },
+    userRoleAssignment: {
+      upsert: async (args) => {
+        roleUpserts.push(args);
+        return args.create;
+      },
+    },
+    user: { update: async (args) => userUpdates.push(args) },
+    userSession: { deleteMany: async () => { sessionInvalidations += 1; return { count: 1 }; } },
+  });
+
+  try {
+    assert.equal(await repository.saveClassTeacherAssignment({
+      staffId: "staff-3",
+      classId: "class-3",
+      sessionId: "session-1",
+      assignedById: "admin-1",
+    }), assignment);
+    assert.deepEqual(roleUpserts.map(({ create }) => create.roleId), ["class-teacher-role", "teacher-role"]);
+    assert.deepEqual(roleUpserts.map(({ create }) => create.status), ["ACTIVE", "ACTIVE"]);
+    assert.deepEqual(userUpdates, [{
+      where: { id: "user-3" },
+      data: { role: "CLASS_TEACHER" },
+    }]);
+    assert.equal(sessionInvalidations, 1);
+  } finally {
+    prisma.$transaction = originalTransaction;
   }
 });
