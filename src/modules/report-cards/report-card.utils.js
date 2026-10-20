@@ -2,12 +2,12 @@ const sum = (values) => values.reduce((total, value) => total + (value == null ?
 const MAX_ASSESSMENT_COMPONENTS = Object.freeze({
 	firstTestMax: 20,
 	secondTestMax: 20,
-	examMax: 50
+	examMax: 60
 });
 const DEFAULT_ASSESSMENT_CONFIGURATION = Object.freeze({
 	firstTestMax: 20,
 	secondTestMax: 20,
-	examMax: 50,
+	examMax: 60,
 	gradeBands: [
 		{ minimum: 70, grade: "A", remark: "Excellent" },
 		{ minimum: 60, grade: "B", remark: "Very Good" },

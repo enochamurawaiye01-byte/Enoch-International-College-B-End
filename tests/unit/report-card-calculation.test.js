@@ -7,42 +7,47 @@ const reportCardRepository = require("../../src/modules/report-cards/report-card
 const reportCardService = require("../../src/modules/report-cards/report-card.service");
 
 test("calculates totals and grades from the fixed component maxima", () => {
-  const result = calculateAssessment({ firstTest: 15, secondTest: 18, exam: 45 });
+  const result = calculateAssessment({ firstTest: 15, secondTest: 18, exam: 55 });
 
-  assert.equal(result.total, 78);
-  assert.equal(result.totalPossible, 90);
-  assert.equal(result.percentage, (78 / 90) * 100);
+  assert.equal(result.total, 88);
+  assert.equal(result.totalPossible, 100);
+  assert.equal(result.percentage, 88);
   assert.equal(result.grade, "A");
   assert.equal(result.remark, "Excellent");
 });
 
-test("caps configured assessment maxima at 20 for each CA and 50 for the exam", () => {
-  assert.deepEqual(MAX_ASSESSMENT_COMPONENTS, { firstTestMax: 20, secondTestMax: 20, examMax: 50 });
+test("caps configured assessment maxima at 20 for each CA and 60 for the exam", () => {
+  assert.deepEqual(MAX_ASSESSMENT_COMPONENTS, { firstTestMax: 20, secondTestMax: 20, examMax: 60 });
   assert.deepEqual({
     firstTestMax: DEFAULT_ASSESSMENT_CONFIGURATION.firstTestMax,
     secondTestMax: DEFAULT_ASSESSMENT_CONFIGURATION.secondTestMax,
     examMax: DEFAULT_ASSESSMENT_CONFIGURATION.examMax
-  }, { firstTestMax: 20, secondTestMax: 20, examMax: 50 });
-  assert.equal(calculateAssessment({ firstTest: 20, secondTest: 20, exam: 50 }, {
+  }, { firstTestMax: 20, secondTestMax: 20, examMax: 60 });
+  const perfectScore = calculateAssessment({ firstTest: 20, secondTest: 20, exam: 60 });
+  assert.equal(perfectScore.total, 100);
+  assert.equal(perfectScore.totalPossible, 100);
+  assert.equal(perfectScore.percentage, 100);
+  assert.equal(calculateAssessment({ firstTest: 20, secondTest: 20, exam: 60 }, {
     firstTestMax: 20,
     secondTestMax: 20,
-    examMax: 60,
+    examMax: 70,
     gradeBands: DEFAULT_ASSESSMENT_CONFIGURATION.gradeBands
-  }).totalPossible, 90);
+  }).totalPossible, 100);
   assert.throws(() => calculateAssessment({ firstTest: 20.01, secondTest: 0, exam: 0 }), /firstTest must be between 0 and 20/);
-  assert.throws(() => calculateAssessment({ firstTest: 0, secondTest: 0, exam: 50.01 }), /exam must be between 0 and 50/);
+  assert.throws(() => calculateAssessment({ firstTest: 0, secondTest: 0, exam: 60.01 }), /exam must be between 0 and 60/);
 });
 
 test("rejects assessment configurations above the score-entry maxima", () => {
   const configuration = {
     firstTestMax: 20,
     secondTestMax: 20,
-    examMax: 50,
+    examMax: 60,
     gradeBands: DEFAULT_ASSESSMENT_CONFIGURATION.gradeBands
   };
   assert.equal(assessmentConfigurationSchema.safeParse(configuration).success, true);
   assert.equal(assessmentConfigurationSchema.safeParse({ ...configuration, firstTestMax: 21 }).success, false);
-  assert.equal(assessmentConfigurationSchema.safeParse({ ...configuration, examMax: 60 }).success, false);
+  assert.equal(assessmentConfigurationSchema.safeParse({ ...configuration, examMax: 60 }).success, true);
+  assert.equal(assessmentConfigurationSchema.safeParse({ ...configuration, examMax: 61 }).success, false);
 });
 
 test("clamps existing school settings to the new score-entry maxima", async () => {
@@ -50,14 +55,14 @@ test("clamps existing school settings to the new score-entry maxima", async () =
   reportCardRepository.findConfiguration = async () => ({
     firstTestMax: 20,
     secondTestMax: 20,
-    examMax: 60,
+    examMax: 70,
     gradeBands: DEFAULT_ASSESSMENT_CONFIGURATION.gradeBands
   });
   try {
     const configuration = await reportCardService.getConfiguration({ schoolId: "school-1" });
     assert.equal(configuration.firstTestMax, 20);
     assert.equal(configuration.secondTestMax, 20);
-    assert.equal(configuration.examMax, 50);
+    assert.equal(configuration.examMax, 60);
   } finally {
     reportCardRepository.findConfiguration = originalFindConfiguration;
   }
