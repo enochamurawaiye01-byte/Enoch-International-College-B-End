@@ -37,5 +37,11 @@ const updateAttendanceSchema = attendanceSchema.omit({ studentId: true, sessionI
 const attendanceQuerySchema = z.object({ studentId: uuid.optional(), classId: uuid.optional(), sessionId: uuid.optional(), termId: uuid.optional(), date: z.coerce.date().optional(), from: z.coerce.date().optional(), to: z.coerce.date().optional() }).strict().superRefine((data, context) => {
 	if (data.from && data.to && data.from > data.to) context.addIssue({ code: "custom", path: ["to"], message: "'to' must be on or after 'from'." });
 });
+const attendanceRosterQuerySchema = z.object({
+	classId: uuid,
+	sessionId: uuid,
+	termId: uuid,
+	date: z.coerce.date(),
+}).strict();
 
-module.exports = { attendanceSchema, batchAttendanceSchema, updateAttendanceSchema, attendanceQuerySchema };
+module.exports = { attendanceSchema, batchAttendanceSchema, updateAttendanceSchema, attendanceQuerySchema, attendanceRosterQuerySchema };

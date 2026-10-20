@@ -39,6 +39,35 @@ const create = async (data, user) => {
 	return repository.create({ ...normalized, classId: enrollment.classId });
 };
 
+const getRoster = async (query, user) => {
+	const [schoolClass, session, term] = await Promise.all([
+		repository.findClassById(query.classId),
+		repository.findSession(query.sessionId),
+		repository.findTerm(query.termId),
+	]);
+	if (!schoolClass) throw new NotFoundError("Class not found");
+	if (!session) throw new NotFoundError("Academic session not found");
+	if (!term) throw new NotFoundError("Term not found");
+	if (term.sessionId !== session.id) throw new AppError("Term does not belong to the selected session.", 409, "TERM_SESSION_MISMATCH");
+	await assertTeacherAccess(user, query.classId, query.sessionId, query.termId);
+
+	const enrollments = await repository.findActiveClassRoster(query.classId, query.sessionId, query.termId);
+	const studentIds = enrollments.map(({ studentId }) => studentId);
+	const date = startOfDay(query.date);
+	const savedRecords = await repository.findRosterAttendance(studentIds, query.classId, query.sessionId, query.termId, date);
+	const statusByStudent = new Map(savedRecords.map(({ studentId, status }) => [studentId, status]));
+	return {
+		class: schoolClass,
+		session,
+		term,
+		date,
+		students: enrollments.map(({ student }) => ({
+			...student,
+			status: statusByStudent.get(student.id) || null,
+		})),
+	};
+};
+
 const getById = async (id, user) => {
 	const attendance = await repository.findById(id);
 	if (!attendance) throw new NotFoundError("Attendance record not found");
@@ -118,4 +147,4 @@ const batchCreate = async (data, user) => {
 	return repository.saveMany(records);
 };
 
-module.exports = { create, batchCreate, getById, update, getAll, summary };
+module.exports = { create, batchCreate, getRoster, getById, update, getAll, summary };

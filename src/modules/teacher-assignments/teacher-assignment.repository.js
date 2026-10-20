@@ -62,10 +62,8 @@ const findClassTeacherAssignments = (filters) => prisma.classTeacherAssignment.f
 	orderBy: [{ session: { startDate: "desc" } }, { class: { name: "asc" } }]
 });
 const findClassTeacherAssignmentByClassSession = (classId, sessionId) => prisma.classTeacherAssignment.findUnique({ where: { classId_sessionId: { classId, sessionId } } });
-const saveClassTeacherAssignment = (data) => prisma.classTeacherAssignment.upsert({
-	where: { classId_sessionId: { classId: data.classId, sessionId: data.sessionId } },
-	update: { staffId: data.staffId, assignedById: data.assignedById },
-	create: data,
+const saveClassTeacherAssignment = (data) => prisma.classTeacherAssignment.create({
+	data,
 	include: { staff: { include: { user: true } }, class: { include: { classLevel: true } }, session: true }
 });
 const removeClassTeacherAssignment = (id) => prisma.classTeacherAssignment.delete({ where: { id } });
