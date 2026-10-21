@@ -15,7 +15,7 @@ const findForTeacher = async (userId, filters = {}) => {
 		},
 		select: { classId: true, sessionId: true }
 	});
-	const assignments = classTeacherAssignments.length ? [] : await prisma.teacherAssignment.findMany({
+	const assignments = await prisma.teacherAssignment.findMany({
 		where: {
 			staffId: staff.id,
 			AND: [

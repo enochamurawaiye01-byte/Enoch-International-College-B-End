@@ -32,11 +32,10 @@ const getById = async (id, user) => {
 			},
 			select: { classId: true }
 		}) : [];
-		if (classTeacherAssignments.length) {
-			if (!classTeacherAssignments.some((assignment) => assignment.classId === result.exam.classId)) {
-			throw new AppError("You are not assigned to this result's class.", 403, "RESULT_ACCESS_DENIED");
-			}
-		} else {
+		const isAssignedClassTeacher = classTeacherAssignments.some((assignment) =>
+			assignment.classId === result.exam.classId && assignment.sessionId === result.sessionId
+		);
+		if (!isAssignedClassTeacher) {
 			const assignment = staff ? await prisma.teacherAssignment.findFirst({
 			where: {
 				staffId: staff.id,

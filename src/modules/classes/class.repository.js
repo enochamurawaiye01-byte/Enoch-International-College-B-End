@@ -184,7 +184,7 @@ const findStudents = (classId) => prisma.student.findMany({
     include: { user: { select: { email: true, phoneNumber: true, status: true } } },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
 });
-const findTeacherAssignment = async (userId, classId, schoolId, userRole) => {
+const findTeacherAssignment = async (userId, classId, schoolId) => {
     const staff = await prisma.staff.findUnique({ where: { userId }, select: { id: true } });
     if (!staff) return null;
     const activeSessions = await prisma.academicSession.findMany({
@@ -192,23 +192,25 @@ const findTeacherAssignment = async (userId, classId, schoolId, userRole) => {
         select: { id: true }
     });
     const activeSessionIds = activeSessions.map(({ id }) => id);
-    const classAssignments = await prisma.classTeacherAssignment.findMany({
+    const classAssignmentsPromise = prisma.classTeacherAssignment.findMany({
         where: {
             staffId: staff.id,
             session: { isActive: true, ...(schoolId ? { schoolId } : {}) }
         },
         select: { id: true, classId: true }
     });
-    if (classAssignments.length) return classAssignments.find((assignment) => assignment.classId === classId) || null;
-    if (userRole === "CLASS_TEACHER") return null;
-    return prisma.teacherAssignment.findFirst({
+    const [classAssignments, subjectAssignment] = await Promise.all([
+        classAssignmentsPromise,
+        prisma.teacherAssignment.findFirst({
         where: {
             classId,
             staffId: staff.id,
             OR: [{ sessionId: null }, ...(activeSessionIds.length ? [{ sessionId: { in: activeSessionIds } }] : [])]
         },
         select: { id: true }
-    });
+        })
+    ]);
+    return classAssignments.find((assignment) => assignment.classId === classId) || subjectAssignment || null;
 };
 const findTeacherClassIds = async (userId, schoolId, userRole) => {
     const staff = await prisma.staff.findUnique({ where: { userId }, select: { id: true } });
@@ -218,25 +220,27 @@ const findTeacherClassIds = async (userId, schoolId, userRole) => {
         select: { id: true }
     });
     const activeSessionIds = activeSessions.map(({ id }) => id);
-    const classAssignments = await prisma.classTeacherAssignment.findMany({
+    const [classAssignments, subjectAssignments] = await Promise.all([
+        prisma.classTeacherAssignment.findMany({
         where: {
             staffId: staff.id,
             session: { isActive: true, ...(schoolId ? { schoolId } : {}) }
         },
         select: { classId: true }
-    });
-    if (classAssignments.length) return [...new Set(classAssignments.map((assignment) => assignment.classId))];
-    if (userRole === "CLASS_TEACHER") return [];
-
-    const subjectAssignments = await prisma.teacherAssignment.findMany({
+        }),
+        prisma.teacherAssignment.findMany({
         where: {
             staffId: staff.id,
             OR: [{ sessionId: null }, ...(activeSessionIds.length ? [{ sessionId: { in: activeSessionIds } }] : [])]
         },
         select: { classId: true }
-    });
+        })
+    ]);
 
-    return [...new Set(subjectAssignments.map((assignment) => assignment.classId))];
+    return [...new Set([
+        ...classAssignments.map((assignment) => assignment.classId),
+        ...subjectAssignments.map((assignment) => assignment.classId)
+    ])];
 };
 
 const deleteClass = async (id) => {

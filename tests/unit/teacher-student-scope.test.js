@@ -5,8 +5,8 @@ const classRepository = require("../../src/modules/classes/class.repository");
 const studentRepository = require("../../src/modules/students/student.repository");
 const studentService = require("../../src/modules/students/student.service");
 
-test("class-teacher student access stays within the active class assignment", async (t) => {
-  await t.test("an active class-teacher assignment takes precedence over unrelated subject assignments", async () => {
+test("teacher student access combines only explicitly assigned classes", async (t) => {
+  await t.test("class and subject assignments both contribute their assigned classes", async () => {
     const originals = {
       staffFindUnique: prisma.staff.findUnique,
       sessionsFindMany: prisma.academicSession.findMany,
@@ -27,9 +27,9 @@ test("class-teacher student access stays within the active class assignment", as
     try {
       assert.deepEqual(
         await classRepository.findTeacherClassIds("teacher-1", "school-1", "TEACHER"),
-        ["jss2a"]
+        ["jss2a", "jss1a"]
       );
-      assert.equal(subjectAssignmentsQueried, false);
+      assert.equal(subjectAssignmentsQueried, true);
     } finally {
       prisma.staff.findUnique = originals.staffFindUnique;
       prisma.academicSession.findMany = originals.sessionsFindMany;
@@ -119,7 +119,7 @@ test("class-teacher student access stays within the active class assignment", as
     }
   });
 
-  await t.test("direct class access cannot use a subject assignment to bypass a class-teacher assignment", async () => {
+  await t.test("a subject assignment remains limited to its explicitly assigned class", async () => {
     const originals = {
       staffFindUnique: prisma.staff.findUnique,
       sessionsFindMany: prisma.academicSession.findMany,
@@ -138,11 +138,11 @@ test("class-teacher student access stays within the active class assignment", as
     };
 
     try {
-      assert.equal(
+      assert.deepEqual(
         await classRepository.findTeacherAssignment("teacher-1", "jss1a", "school-1", "TEACHER"),
-        null
+        { id: "subject-assignment-jss1a" }
       );
-      assert.equal(subjectAssignmentQueried, false);
+      assert.equal(subjectAssignmentQueried, true);
     } finally {
       prisma.staff.findUnique = originals.staffFindUnique;
       prisma.academicSession.findMany = originals.sessionsFindMany;

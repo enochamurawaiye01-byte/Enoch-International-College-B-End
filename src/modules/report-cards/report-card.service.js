@@ -49,10 +49,9 @@ const assertTeacherAssignment = async (user, { classId, subjectId, sessionId, te
 		staffId: staff.id,
 		session: { isActive: true, ...(user.schoolId ? { schoolId: user.schoolId } : {}) }
 	});
-	if (classTeacherAssignments.length) {
-		if (!classTeacherAssignments.some((assignment) => assignment.classId === classId)) {
-			throw new AppError("You are not assigned to this class for the selected session.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
-		}
+	if (classTeacherAssignments.some((assignment) =>
+		assignment.classId === classId && assignment.sessionId === sessionId
+	)) {
 		return staff.id;
 	}
 	const assignment = await repository.findTeacherAssignment({
@@ -294,10 +293,9 @@ const getById = async (id, user) => {
 			staffId: staff.id,
 			session: { isActive: true, ...(user.schoolId ? { schoolId: user.schoolId } : {}) }
 		}) : [];
-		if (classTeacherAssignments.length) {
-			if (!classTeacherAssignments.some((assignment) => assignment.classId === report.classId)) {
-				throw new AppError("You are not assigned to this student's class.", 403, "REPORT_CARD_ACCESS_DENIED");
-			}
+		if (classTeacherAssignments.some((assignment) =>
+			assignment.classId === report.classId && assignment.sessionId === report.sessionId
+		)) {
 			return report;
 		}
 		const allowedEntries = staff ? await Promise.all(report.entries.map(async (entry) => Boolean(await repository.findTeacherAssignment({
@@ -556,23 +554,20 @@ const getAll = async (query, user) => {
 			},
 			select: { classId: true, sessionId: true }
 		});
-		if (classTeacherAssignments.length) {
-			classTeacherAssignments = classTeacherAssignments.filter((assignment) =>
-				(!query.classId || assignment.classId === query.classId)
-				&& (!query.sessionId || assignment.sessionId === query.sessionId)
-			);
-		} else {
-			assignments = await prisma.teacherAssignment.findMany({
-				where: {
-					staffId: staff.id,
-					...(query.classId ? { classId: query.classId } : {}),
-					...(query.subjectId ? { subjectId: query.subjectId } : {}),
-					...(query.sessionId ? { OR: [{ sessionId: null }, { sessionId: query.sessionId }] } : {}),
-					...(query.termId ? { OR: [{ termId: null }, { termId: query.termId }] } : {})
-				},
-				select: { classId: true, subjectId: true, sessionId: true, termId: true }
-			});
-		}
+		classTeacherAssignments = classTeacherAssignments.filter((assignment) =>
+			(!query.classId || assignment.classId === query.classId)
+			&& (!query.sessionId || assignment.sessionId === query.sessionId)
+		);
+		assignments = await prisma.teacherAssignment.findMany({
+			where: {
+				staffId: staff.id,
+				...(query.classId ? { classId: query.classId } : {}),
+				...(query.subjectId ? { subjectId: query.subjectId } : {}),
+				...(query.sessionId ? { OR: [{ sessionId: null }, { sessionId: query.sessionId }] } : {}),
+				...(query.termId ? { OR: [{ termId: null }, { termId: query.termId }] } : {})
+			},
+			select: { classId: true, subjectId: true, sessionId: true, termId: true }
+		});
 		if (!assignments.length && !classTeacherAssignments.length) return [];
 		where.OR = [
 			...assignments.map((assignment) => ({
