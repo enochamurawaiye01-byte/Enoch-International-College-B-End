@@ -58,7 +58,10 @@ const findAll = async ({ schoolId, search, classId, classIds, status, page = 1, 
     if (selectedClassIds) conditions.push({
         OR: [
             { currentClassId: { in: selectedClassIds } },
-            { enrollments: { some: { classId: { in: selectedClassIds }, status: "ACTIVE", session: { isActive: true } } } },
+            {
+                currentClassId: null,
+                enrollments: { some: { classId: { in: selectedClassIds }, status: "ACTIVE", session: { isActive: true } } },
+            },
         ],
     });
     if (search) conditions.push({ OR: [

@@ -73,7 +73,7 @@ const getClassById = async (id, user) => {
             "CLASS_NOT_FOUND"
         );
     }
-    if (isTeachingAccount(user) && !(await classRepository.findTeacherAssignment(user.userId, id, user.schoolId))) {
+    if (isTeachingAccount(user) && !(await classRepository.findTeacherAssignment(user.userId, id, user.schoolId, user.role))) {
         throw new AppError("You are not assigned to this class.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
     }
 

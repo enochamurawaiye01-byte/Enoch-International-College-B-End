@@ -76,7 +76,10 @@ test("Super Admin student listing is global, filtered, and paginated", async (t)
       assert.equal(findManyArgs.where.status, "ACTIVE");
       assert.deepEqual(findManyArgs.where.AND[0].OR, [
         { currentClassId: { in: ["class-1"] } },
-        { enrollments: { some: { classId: { in: ["class-1"] }, status: "ACTIVE", session: { isActive: true } } } },
+        {
+          currentClassId: null,
+          enrollments: { some: { classId: { in: ["class-1"] }, status: "ACTIVE", session: { isActive: true } } },
+        },
       ]);
       assert.equal(findManyArgs.where.user, undefined);
       assert.equal(findManyArgs.where.AND[1].OR[0].firstName.contains, "Ada");

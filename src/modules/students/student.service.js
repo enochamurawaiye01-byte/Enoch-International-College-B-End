@@ -12,13 +12,12 @@ const { isTeachingAccount } = require("../../core/utils/teaching-roles");
 const isAssignedTeacherToStudent = async (user, student) => {
     if (!isTeachingAccount(user)) return false;
     const assignedClassIds = await repository.findTeacherClassIds(user.userId, user.schoolId, user.role);
-    const studentClassIds = new Set([
-        student.currentClassId,
-        ...(student.enrollments || [])
+    const studentClassIds = student.currentClassId
+        ? [student.currentClassId]
+        : (student.enrollments || [])
             .filter((enrollment) => enrollment.status === "ACTIVE" && enrollment.session?.isActive)
-            .map((enrollment) => enrollment.classId)
-    ].filter(Boolean));
-    return assignedClassIds.some((classId) => studentClassIds.has(classId));
+            .map((enrollment) => enrollment.classId);
+    return assignedClassIds.some((classId) => studentClassIds.includes(classId));
 };
 
 const getStudentByUserId = async (userId) => {

@@ -25,7 +25,10 @@ router.get("/teacher", requireRoles(...TEACHING_ROLES, "STAFF"), async (req, res
                 where: {
                     OR: [
                         { currentClassId: { in: classIds } },
-                        { enrollments: { some: { classId: { in: classIds }, status: "ACTIVE", session: { isActive: true } } } },
+                        {
+                            currentClassId: null,
+                            enrollments: { some: { classId: { in: classIds }, status: "ACTIVE", session: { isActive: true } } },
+                        },
                     ],
                 },
             })
