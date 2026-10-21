@@ -60,7 +60,7 @@ describe("Registration application validation", () => {
         confirmPassword: "Password123!",
     };
 
-    it("allows teacher applications without a student class or applicant-provided staff number", () => {
+    it("allows teacher applications without a student class, staff number, or application-letter upload", () => {
         const result = registerSchema.safeParse({ ...baseApplication, role: "TEACHER" });
         assert.equal(result.success, true);
     });

@@ -44,7 +44,7 @@ const sanitizeUser = (user) => {
     return safeUser;
 };
 
-const register = async (data, applicationLetterUrl = null) => {
+const register = async (data) => {
     const {
         firstName,
         middleName,
@@ -71,12 +71,6 @@ const register = async (data, applicationLetterUrl = null) => {
 
     const normalizedEmail = email.toLowerCase().trim();
     if (!["STUDENT", "TEACHER", "PARENT"].includes(role)) throw new AuthError("Only student, teacher and parent applications are accepted here", 403, "REGISTRATION_ROLE_NOT_ALLOWED");
-    if (role === "TEACHER" && !applicationLetterUrl) {
-        throw new AuthError("An application letter is required for teacher registration.", 422, "TEACHER_APPLICATION_LETTER_REQUIRED");
-    }
-    if (role !== "TEACHER" && applicationLetterUrl) {
-        throw new AuthError("An application letter can only be submitted with a teacher application.", 422, "APPLICATION_LETTER_ROLE_INVALID");
-    }
 
     const existingUser = await repository.findUserByEmail(normalizedEmail);
 
@@ -177,7 +171,6 @@ const register = async (data, applicationLetterUrl = null) => {
                 lastName,
                 jobTitle: jobTitle || "Teacher",
                 qualification: qualification || null,
-                applicationLetterUrl,
                 dateOfBirth: dateOfBirth || null,
                 gender: gender || null,
                 address: address || null,

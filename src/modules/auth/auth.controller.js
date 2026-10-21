@@ -1,6 +1,5 @@
 // Auth controller
 const authService = require("./auth.service");
-const { uploadFile, removeStoredFile } = require("../../config/storage");
 
 const getRegistrationOptions = async (req, res, next) => {
     try {
@@ -12,16 +11,8 @@ const getRegistrationOptions = async (req, res, next) => {
 };
 
 const register = async (req, res, next) => {
-    let storedLetter;
     try {
-        if (req.file) {
-            storedLetter = await uploadFile({
-                file: req.file,
-                folder: "teacher-applications",
-                privateFile: true,
-            });
-        }
-        const result = await authService.register(req.body, storedLetter?.storageReference || null);
+        const result = await authService.register(req.body);
 
         res.status(201).json({
             success: true,
@@ -29,13 +20,6 @@ const register = async (req, res, next) => {
             data: result,
         });
     } catch (error) {
-        if (storedLetter) {
-            try {
-                await removeStoredFile(storedLetter.storageReference);
-            } catch (cleanupError) {
-                console.error(`[Application letter cleanup failed] message=${cleanupError.message}`);
-            }
-        }
         next(error);
     }
 };
@@ -139,4 +123,3 @@ module.exports = {
     getCurrentUser,
     changePassword,
 };
-
