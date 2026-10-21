@@ -273,6 +273,9 @@ const getById = async (id, user) => {
 	const report = await repository.findById(id);
 	if (!report) throw new NotFoundError("Report card not found");
 	if (!user) throw new AppError("Authentication required.", 401, "UNAUTHENTICATED");
+	if (user.role !== "SUPER_ADMIN" && (!user.schoolId || report.student.user.schoolId !== user.schoolId || report.session.schoolId !== user.schoolId)) {
+		throw new AppError("You cannot access a report card from another school.", 403, "REPORT_CARD_ACCESS_DENIED");
+	}
 	if (user.role === "STUDENT" && report.student.userId !== user.userId) throw new AppError("You can only view your own report card.", 403, "REPORT_CARD_ACCESS_DENIED");
 	if (user.role === "STUDENT" && !report.studentPublished) throw new AppError("This report card has not been published to the student portal.", 403, "REPORT_CARD_NOT_PUBLISHED");
 	if (isTeachingAccount(user)) {
@@ -509,7 +512,14 @@ const getAll = async (query, user) => {
 	if (!user || (!isAdmin(user.role) && !isTeachingAccount(user) && user.role !== "STUDENT" && !(await hasPermission(user, "results:view")))) {
 		throw new AppError("You cannot view these report cards.", 403, "REPORT_CARD_ACCESS_DENIED");
 	}
+	if (user.role !== "SUPER_ADMIN" && !user.schoolId) {
+		throw new AppError("A school-scoped account is required to view report cards.", 403, "REPORT_CARD_ACCESS_DENIED");
+	}
 	const where = {};
+	if (user.role !== "SUPER_ADMIN") {
+		where.student = { user: { schoolId: user.schoolId } };
+		where.session = { schoolId: user.schoolId };
+	}
 	if (query.studentId) where.studentId = query.studentId;
 	if (query.sessionId) where.sessionId = query.sessionId;
 	if (query.termId) where.termId = query.termId;
@@ -518,7 +528,7 @@ const getAll = async (query, user) => {
 	if (query.subjectId) where.entries = { some: { subjectId: query.subjectId } };
 	if (query.teacherId) where.entries = { ...(where.entries || {}), some: { ...(where.entries?.some || {}), teacherId: query.teacherId } };
 	if (user.role === "STUDENT") {
-		where.student = { userId: user.userId };
+		where.student = { ...(where.student || {}), userId: user.userId };
 		where.studentPublished = true;
 	}
 	let assignments = [];

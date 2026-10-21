@@ -1,5 +1,6 @@
 const assert = require("assert");
 const { describe, it } = require("node:test");
+const crypto = require("node:crypto");
 const { generateAccessToken, generateRefreshToken, verifyAccessToken, verifyRefreshToken } = require("../../src/core/utils/jwt");
 const { calculateGrade } = require("../../src/modules/results/result.service");
 const { registerSchema } = require("../../src/modules/auth/auth.validator");
@@ -72,7 +73,7 @@ describe("Registration application validation", () => {
 });
 
 describe("Student registration number generation", () => {
-    it("generates unique, randomized-looking four-digit MIC suffixes", async () => {
+    it("generates unique MIC initials with five-digit randomized suffixes", async () => {
         let nextValue = 0;
         const client = {
             $queryRaw: async () => [{ value: ++nextValue }],
@@ -82,7 +83,7 @@ describe("Student registration number generation", () => {
             generateRegistrationNumber(client, "Jordan Adebayo", new Date("2026-06-01T00:00:00Z"))
         ));
 
-        assert.ok(generated.every((registrationNumber) => /^MIC\/2026\/\d{4}$/.test(registrationNumber)));
+        assert.ok(generated.every((registrationNumber) => /^MIC\/[A-Z]{3}\/\d{5}$/.test(registrationNumber)));
         assert.equal(new Set(generated).size, 100);
         assert.notEqual(
             Number(generated[1].split("/").at(-1)),
@@ -91,31 +92,36 @@ describe("Student registration number generation", () => {
     });
 
     it("skips an already-issued randomized suffix", async () => {
-        let nextValue = 0;
+        const originalRandomInt = crypto.randomInt;
+        const suffixes = [7, 7, 8];
+        crypto.randomInt = () => suffixes.shift();
         const client = {
-            $queryRaw: async () => [{ value: ++nextValue }],
+            $queryRaw: async () => [],
             student: { findUnique: async () => null },
         };
-        const existingNumber = await generateRegistrationNumber(
-            client,
-            "Jordan Adebayo",
-            new Date("2026-06-01T00:00:00Z")
-        );
-        nextValue = 0;
-        let lookupCount = 0;
-        client.student.findUnique = async ({ where }) => {
-            lookupCount += 1;
-            return where.registrationNumber === existingNumber ? { id: "existing" } : null;
-        };
-        const nextNumber = await generateRegistrationNumber(
-            client,
-            "Jordan Adebayo",
-            new Date("2026-06-01T00:00:00Z")
-        );
+        try {
+            const existingNumber = await generateRegistrationNumber(
+                client,
+                { firstName: "Jordan", lastName: "Adebayo" },
+                new Date("2026-06-01T00:00:00Z")
+            );
+            let lookupCount = 0;
+            client.student.findUnique = async ({ where }) => {
+                lookupCount += 1;
+                return where.registrationNumber === existingNumber ? { id: "existing" } : null;
+            };
+            const nextNumber = await generateRegistrationNumber(
+                client,
+                { firstName: "Jordan", lastName: "Adebayo" },
+                new Date("2026-06-01T00:00:00Z")
+            );
 
-        assert.match(nextNumber, /^MIC\/2026\/\d{4}$/);
-        assert.notEqual(nextNumber, existingNumber);
-        assert.equal(lookupCount, 2);
+            assert.match(nextNumber, /^MIC\/[A-Z]{3}\/\d{5}$/);
+            assert.notEqual(nextNumber, existingNumber);
+            assert.equal(lookupCount, 2);
+        } finally {
+            crypto.randomInt = originalRandomInt;
+        }
     });
 
     it("accepts registration number login and requires one identifier", () => {
@@ -141,6 +147,6 @@ describe("Student registration number generation", () => {
         ));
 
         assert.equal(new Set(numbers).size, 100);
-        assert.ok(numbers.every((number) => /^MIC\/2026\/\d{4}$/.test(number)));
+        assert.ok(numbers.every((number) => /^MIC\/[A-Z]{3}\/\d{5}$/.test(number)));
     });
 });

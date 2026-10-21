@@ -2,7 +2,10 @@ require("dotenv").config();
 
 const { PrismaClient } = require("@prisma/client");
 const { PrismaPg } = require("@prisma/adapter-pg");
-const generateRegistrationNumber = require("../src/core/utils/generate-registration-number");
+const {
+  generateStudentRegistrationNumber,
+  generateStaffRegistrationNumber,
+} = require("../src/core/utils/registration-identifiers");
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
@@ -44,34 +47,40 @@ async function completeUserData() {
       // 2. Profile auto-creation based on Role
       if (user.role === "STUDENT") {
         if (!user.student) {
-          const registrationNumber = await generateRegistrationNumber(prisma, user.fullName || "Student User", new Date(), user.schoolId || defaultSchool?.id);
-          await prisma.student.create({
-            data: {
-              userId: user.id,
-              registrationNumber,
-              firstName,
-              lastName,
-              status: user.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",
-              currentClassId: defaultClass?.id || null,
-              admissionDate: new Date(),
-            },
+          const registrationNumber = await prisma.$transaction(async (tx) => {
+            const generated = await generateStudentRegistrationNumber(tx, user.fullName || "Student User");
+            await tx.student.create({
+              data: {
+                userId: user.id,
+                registrationNumber: generated,
+                firstName,
+                lastName,
+                status: user.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",
+                currentClassId: defaultClass?.id || null,
+                admissionDate: new Date(),
+              },
+            });
+            return generated;
           });
           console.log(`[+] Created Student profile for ${user.fullName} (${registrationNumber})`);
           healedCount++;
         }
       } else if (["TEACHER", "STAFF", "PRINCIPAL", "VICE_PRINCIPAL", "HEAD_TEACHER", "BURSAR", "MANAGEMENT", "ADMIN", "SUPER_ADMIN"].includes(user.role)) {
         if (!user.staff) {
-          const staffNumber = `MIC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
-          await prisma.staff.create({
-            data: {
-              userId: user.id,
-              staffNumber,
-              firstName,
-              lastName,
-              jobTitle: user.role,
-              status: user.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",
-              employmentDate: new Date(),
-            },
+          const staffNumber = await prisma.$transaction(async (tx) => {
+            const generated = await generateStaffRegistrationNumber(tx, user.fullName || "User Account");
+            await tx.staff.create({
+              data: {
+                userId: user.id,
+                staffNumber: generated,
+                firstName,
+                lastName,
+                jobTitle: user.role,
+                status: user.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",
+                employmentDate: new Date(),
+              },
+            });
+            return generated;
           });
           console.log(`[+] Created Staff profile for ${user.fullName} (${staffNumber})`);
           healedCount++;

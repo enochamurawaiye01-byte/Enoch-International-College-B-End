@@ -84,7 +84,7 @@ const findUser = (id) => prisma.user.findUnique({
     student: { select: { id: true } },
     staff: { select: { staffNumber: true } },
     roleAssignments: {
-      select: { status: true, role: { select: { name: true } } },
+      select: { status: true, role: { select: { name: true, isActive: true } } },
     },
   }
 });

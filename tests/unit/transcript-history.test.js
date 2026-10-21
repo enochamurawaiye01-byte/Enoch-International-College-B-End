@@ -16,7 +16,7 @@ test("transcripts display the class recorded for each historical result", async 
     admissionNumber: "APP-14",
     gender: "OTHER",
     admissionDate: new Date("2026-09-01T00:00:00.000Z"),
-    user: { email: "jordan@example.test" },
+    user: { id: "student-user", schoolId: "school-1", email: "jordan@example.test" },
     currentClass: { id: "class-ss2", name: "SS2 A" },
     results: [{
       session: { name: "2025/2026" },
@@ -42,7 +42,11 @@ test("transcripts display the class recorded for each historical result", async 
     prisma.student.findUnique = originalFindUnique;
   });
 
-  const transcript = await transcriptService.getStudentTranscript("student-1");
+  const transcript = await transcriptService.getStudentTranscript("student-1", {
+    userId: "admin-1",
+    schoolId: "school-1",
+    role: "SUPER_ADMIN",
+  });
 
   assert.equal(transcript.student.registrationNumber, "MIC/2026/000014");
   assert.equal(transcript.student.currentClass, "SS2 A");
@@ -61,7 +65,7 @@ test("teachers can read transcripts only for students in their assigned classes"
     registrationNumber: "MIC/2026/000014",
     gender: "OTHER",
     admissionDate: new Date("2026-09-01T00:00:00.000Z"),
-    user: { email: "jordan@example.test" },
+    user: { id: "student-user", schoolId: "school-1", email: "jordan@example.test" },
     currentClass: { id: "class-assigned", name: "JSS 1 A" },
     enrollments: [],
     results: [],
@@ -130,7 +134,7 @@ test("transcript CSV uses the class from the result's exam", async (t) => {
   transcriptRepository.findStudents = async () => [{
     firstName: "Jordan",
     lastName: "Adebayo",
-    registrationNumber: "MIC/2026/000014",
+    registrationNumber: "MIC/ADJ/00014",
     currentClass: { name: "SS2 A" },
     results: [{
       exam: { class: { name: "JSS3 A" }, subject: { name: "Mathematics" }, title: "Final Examination" },
@@ -146,8 +150,8 @@ test("transcript CSV uses the class from the result's exam", async (t) => {
     transcriptRepository.findStudents = originalFindStudents;
   });
 
-  const csv = await transcriptService.getCsv({});
+  const csv = await transcriptService.getCsv({}, { role: "SUPER_ADMIN" });
 
-  assert.match(csv, /Jordan Adebayo","MIC\/2026\/000014","JSS3 A"/);
-  assert.doesNotMatch(csv, /Jordan Adebayo","MIC\/2026\/000014","SS2 A"/);
+  assert.match(csv, /Jordan Adebayo","MIC\/ADJ\/00014","JSS3 A"/);
+  assert.doesNotMatch(csv, /Jordan Adebayo","MIC\/ADJ\/00014","SS2 A"/);
 });

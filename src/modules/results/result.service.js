@@ -20,6 +20,9 @@ const getById = async (id, user) => {
 	if (user?.role === "STUDENT" && (result.student.userId !== user.userId || !result.published)) {
 		throw new AppError("You can only view your own published results.", 403, "RESULT_ACCESS_DENIED");
 	}
+	if (user?.role !== "SUPER_ADMIN" && (!user?.schoolId || result.student.user?.schoolId !== user.schoolId)) {
+		throw new AppError("You cannot access results from another school.", 403, "RESULT_ACCESS_DENIED");
+	}
 	if (isTeachingAccount(user)) {
 		const staff = await prisma.staff.findUnique({ where: { userId: user.userId }, select: { id: true } });
 		const [assignment, classTeacherAssignment] = staff ? await Promise.all([
@@ -36,6 +39,7 @@ const getById = async (id, user) => {
 				where: {
 					staffId: staff.id,
 					classId: result.exam.classId,
+					sessionId: result.sessionId,
 					session: { isActive: true, ...(user.schoolId ? { schoolId: user.schoolId } : {}) }
 				},
 				select: { id: true }
@@ -58,6 +62,9 @@ const getMyResults = async (userId) => {
 };
 
 const getAll = async (query, user) => {
+	if (user?.role !== "SUPER_ADMIN" && !user?.schoolId) {
+		throw new AppError("A school-scoped account is required to view results.", 403, "RESULT_ACCESS_DENIED");
+	}
 	const where = {};
 	["studentId", "examId", "sessionId", "termId", "published"].forEach((key) => {
 		if (query[key] !== undefined) {
@@ -71,21 +78,26 @@ const getAll = async (query, user) => {
 		where.published = true;
 		return repository.findAll(where);
 	}
-	if (isTeachingAccount(user)) return repository.findForTeacher(user.userId, where);
+	if (user?.role !== "SUPER_ADMIN") {
+		where.student = { user: { schoolId: user.schoolId } };
+		where.session = { schoolId: user.schoolId };
+	}
+	if (isTeachingAccount(user)) return repository.findForTeacher(user.userId, { ...where, schoolId: user.schoolId });
 	if (!await hasPermission(user, "results:view")) throw new AppError("You cannot view these results.", 403, "RESULT_ACCESS_DENIED");
 	return repository.findAll(where);
 };
 
-const getForTeacher = (userId, query) => {
+const getForTeacher = (userId, query, schoolId) => {
+	if (!schoolId) throw new AppError("A school-scoped teacher account is required to view results.", 403, "RESULT_ACCESS_DENIED");
 	const where = {};
 	["examId", "sessionId", "termId"].forEach((key) => {
 		if (query[key]) where[key] = query[key];
 	});
-	return repository.findForTeacher(userId, where);
+	return repository.findForTeacher(userId, { ...where, schoolId });
 };
 
 const setPublished = async (id, published, actor) => {
-	const existing = await getById(id);
+	const existing = await getById(id, actor);
 	if (actor && actor.role !== "SUPER_ADMIN" && !(await hasPermission(actor, "results:edit"))) {
 		throw new AppError("Only administrators can publish/unpublish exam results.", 403, "RESULT_PUBLISH_DENIED");
 	}

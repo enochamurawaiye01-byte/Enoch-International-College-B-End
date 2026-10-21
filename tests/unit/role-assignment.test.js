@@ -258,6 +258,8 @@ test("role assignment workflows", async (t) => {
     };
     const classTeacherRole = { id: "class-teacher-role-id", name: "CLASS_TEACHER", isActive: true };
     let revokedRoleIds = [];
+    let revokedRoleStatus;
+    let sessionsInvalidated = false;
     roleRepository.findUser = async () => targetUser;
     roleRepository.findByName = async (name) => name === classTeacherRole.name ? classTeacherRole : null;
     roleRepository.findUserAssignments = async () => [{
@@ -272,13 +274,127 @@ test("role assignment workflows", async (t) => {
       userRoleAssignment: {
         update: async ({ where, data }) => {
           revokedRoleIds.push(where.userId_roleId.roleId);
+          revokedRoleStatus = data.status;
           return { ...where.userId_roleId, ...data };
         },
         findMany: async () => [{ role: { name: "TEACHER" } }],
       },
       user: { update: async () => ({}) },
-      userSession: { deleteMany: async () => ({ count: 1 }) },
-      notification: { updateMany: async () => ({ count: 0 }) }
+      userSession: { deleteMany: async () => { sessionsInvalidated = true; return { count: 1 }; } },
+      notification: { updateMany: async () => ({ count: 0 }) },
+      auditLog: { create: async () => ({ id: "audit-id" }) }
+    });
+
+    await t.test("an ordinary Super Admin can be revoked while the protected account stays protected", async () => {
+      const originals = {
+        findUser: roleRepository.findUser,
+        findAssignments: roleRepository.findUserAssignments,
+        findByName: roleRepository.findByName,
+        lockSuperAdminLimit: roleRepository.lockSuperAdminLimit,
+        countActiveSuperAdmins: roleRepository.countActiveSuperAdmins,
+        transaction: prisma.$transaction,
+        auditCreate: prisma.auditLog.create
+      };
+      const targetUser = {
+        id: "admin-two",
+        role: "SUPER_ADMIN",
+        status: "ACTIVE",
+        schoolId: "school-1",
+        isProtectedSuperAdmin: false
+      };
+      const role = { id: "super-admin-role", name: "SUPER_ADMIN", isActive: true };
+      let revoked = false;
+      roleRepository.findUser = async () => targetUser;
+      roleRepository.findByName = async () => role;
+      roleRepository.findUserAssignments = async () => [{
+        id: "assignment-2",
+        userId: targetUser.id,
+        roleId: role.id,
+        status: "ACTIVE",
+        role
+      }];
+      roleRepository.lockSuperAdminLimit = async () => {};
+      roleRepository.countActiveSuperAdmins = async () => 2;
+      prisma.$transaction = async (callback) => callback({
+        userRoleAssignment: {
+          update: async () => { revoked = true; },
+          findMany: async () => [{ role: { name: "ADMIN" } }]
+        },
+        user: { update: async () => ({}) },
+        userSession: { deleteMany: async () => ({ count: 1 }) },
+        notification: { updateMany: async () => ({ count: 0 }) },
+        auditLog: { create: async () => ({ id: "audit-id" }) }
+      });
+      prisma.auditLog.create = async () => ({ id: "audit-id" });
+      try {
+        await roleService.revokeRole(
+          { userId: targetUser.id, roleName: role.name },
+          { userId: "admin-one", role: "SUPER_ADMIN" }
+        );
+        assert.equal(revoked, true);
+        roleRepository.findUser = async () => ({ ...targetUser, isProtectedSuperAdmin: true });
+        await assert.rejects(
+          roleService.revokeRole(
+            { userId: "protected-admin", roleName: role.name },
+            { userId: "admin-one", role: "SUPER_ADMIN" }
+          ),
+          (error) => error.code === "PROTECTED_SUPER_ADMIN"
+        );
+      } finally {
+        roleRepository.findUser = originals.findUser;
+        roleRepository.findUserAssignments = originals.findAssignments;
+        roleRepository.findByName = originals.findByName;
+        roleRepository.lockSuperAdminLimit = originals.lockSuperAdminLimit;
+        roleRepository.countActiveSuperAdmins = originals.countActiveSuperAdmins;
+        prisma.$transaction = originals.transaction;
+        prisma.auditLog.create = originals.auditCreate;
+      }
+    });
+
+    await t.test("the last active Super Admin cannot be revoked", async () => {
+      const originals = {
+        findUser: roleRepository.findUser,
+        findAssignments: roleRepository.findUserAssignments,
+        findByName: roleRepository.findByName,
+        lockSuperAdminLimit: roleRepository.lockSuperAdminLimit,
+        countActiveSuperAdmins: roleRepository.countActiveSuperAdmins,
+        transaction: prisma.$transaction
+      };
+      const targetUser = { id: "admin-last", role: "SUPER_ADMIN", status: "ACTIVE", isProtectedSuperAdmin: false };
+      const role = { id: "super-admin-role", name: "SUPER_ADMIN", isActive: true };
+      roleRepository.findUser = async () => targetUser;
+      roleRepository.findByName = async () => role;
+      roleRepository.findUserAssignments = async () => [{
+        id: "assignment-last",
+        userId: targetUser.id,
+        roleId: role.id,
+        status: "ACTIVE",
+        role
+      }];
+      roleRepository.lockSuperAdminLimit = async () => {};
+      roleRepository.countActiveSuperAdmins = async () => 1;
+      prisma.$transaction = async (callback) => callback({
+        userRoleAssignment: { update: async () => assert.fail("Must not revoke the last Super Admin.") },
+        user: { update: async () => ({}) },
+        userSession: { deleteMany: async () => ({ count: 0 }) },
+        notification: { updateMany: async () => ({ count: 0 }) }
+      });
+      try {
+        await assert.rejects(
+          roleService.revokeRole(
+            { userId: targetUser.id, roleName: role.name },
+            { userId: "admin-one", role: "SUPER_ADMIN" }
+          ),
+          (error) => error.code === "LAST_SUPER_ADMIN_PROTECTED"
+        );
+      } finally {
+        roleRepository.findUser = originals.findUser;
+        roleRepository.findUserAssignments = originals.findAssignments;
+        roleRepository.findByName = originals.findByName;
+        roleRepository.lockSuperAdminLimit = originals.lockSuperAdminLimit;
+        roleRepository.countActiveSuperAdmins = originals.countActiveSuperAdmins;
+        prisma.$transaction = originals.transaction;
+      }
     });
     prisma.auditLog.create = async () => ({ id: "audit-id" });
 
@@ -288,6 +404,8 @@ test("role assignment workflows", async (t) => {
         { userId: "admin-user", role: "ADMIN" }
       );
       assert.deepEqual(revokedRoleIds, [classTeacherRole.id]);
+      assert.equal(revokedRoleStatus, "REMOVED");
+      assert.equal(sessionsInvalidated, true);
       assert.equal(targetUser.role, "TEACHER");
     } finally {
       roleRepository.findUser = originals.findUser;

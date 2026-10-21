@@ -162,7 +162,10 @@ const convertToStudent = async (id, data = {}) => {
 			}
 		});
 
-		const registrationNumber = await generateRegistrationNumber(tx, fullName, new Date(), payload.schoolId);
+		const registrationNumber = await generateRegistrationNumber(tx, {
+			firstName: lockedAdmission.firstName,
+			lastName: lockedAdmission.lastName
+		});
 		const student = await tx.student.create({
 			data: {
 				userId: user.id,

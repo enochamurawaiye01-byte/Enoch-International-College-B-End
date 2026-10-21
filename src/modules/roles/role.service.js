@@ -364,7 +364,7 @@ const activateRole = async ({ token, assignmentId }, actorUser) => {
     if (assignment.role.name === "STUDENT") {
       const existingStudent = await tx.student.findUnique({ where: { userId: assignment.userId } });
       if (!existingStudent) {
-        const registrationNumber = await generateRegistrationNumber(tx, assignment.user.fullName || "Student User", new Date(), assignment.user.schoolId);
+        const registrationNumber = await generateRegistrationNumber(tx, { firstName, lastName });
         const defaultClass = await tx.class.findFirst({ where: { isActive: true } });
         await tx.student.create({
           data: {
@@ -383,7 +383,7 @@ const activateRole = async ({ token, assignmentId }, actorUser) => {
           data: {
             status: "ACTIVE",
             ...(existingStudent.registrationNumber ? {} : {
-              registrationNumber: await generateRegistrationNumber(tx, assignment.user.fullName || "Student User", new Date(), assignment.user.schoolId),
+              registrationNumber: await generateRegistrationNumber(tx, { firstName, lastName }),
             }),
           },
         });
@@ -397,7 +397,8 @@ const activateRole = async ({ token, assignmentId }, actorUser) => {
         await tx.staff.create({
           data: {
             userId: assignment.userId,
-            staffNumber: `MIC/STF/${crypto.randomBytes(4).toString("hex").toUpperCase()}`,
+            staffNumber: await require("../../core/utils/registration-identifiers")
+              .generateStaffRegistrationNumber(tx, assignment.user.fullName || `${firstName} ${lastName}`),
             firstName,
             lastName,
             jobTitle: assignment.role.name.split("_").map((word) => word[0] + word.slice(1).toLowerCase()).join(" "),
@@ -653,13 +654,24 @@ const changeUserRoles = async (userId, { roles, roleIds }, actor) => {
 };
 
 const revokeRole = async ({ userId, roleId, roleName }, actor) => {
-  if (!actor || !["SUPER_ADMIN", "ADMIN"].includes(actor.role)) {
+  const actorAssignments = actor?.roleAssignments || (actor?.userId
+    ? await repository.findUserAssignments(actor.userId)
+    : []);
+  const hasRoleManagementAuthority = ["SUPER_ADMIN", "ADMIN"].includes(actor?.role)
+    || actorAssignments.some((assignment) =>
+      assignment.status === "ACTIVE"
+      && assignment.role?.isActive !== false
+      && ["SUPER_ADMIN", "ADMIN"].includes(assignment.role?.name)
+    );
+  if (!hasRoleManagementAuthority) {
     await auditDeniedRoleAction(actor, userId, "UNAUTHORIZED_ROLE_REVOCATION_ATTEMPT");
     throw new AppError("Only authorized administrators can revoke staff roles.", 403, "ROLE_MANAGEMENT_DENIED");
   }
   const targetUser = await repository.findUser(userId);
   if (!targetUser) throw new NotFoundError("Target user not found");
-  assertNotProtectedSuperAdmin(targetUser);
+  if (targetUser.isProtectedSuperAdmin) {
+    throw new AppError("The protected SUPER_ADMIN account cannot have its roles changed.", 403, "PROTECTED_SUPER_ADMIN");
+  }
   if (userId === actor.userId) {
     throw new AppError("You cannot revoke roles from your own account.", 403, "SELF_ROLE_CHANGE_DENIED");
   }
@@ -711,9 +723,17 @@ const revokeRole = async ({ userId, roleId, roleName }, actor) => {
       });
     }
     await tx.userSession.deleteMany({ where: { userId } });
+    await tx.auditLog.create({
+      data: {
+        userId: actor.userId || actor.id,
+        action: "ROLE_REVOKED",
+        entity: "User",
+        entityId: userId,
+        description: `Revoked role ${role.name}`
+      }
+    });
   });
 
-  await audit(prisma, actor.userId, "ROLE_REVOKED", "User", userId, `Revoked role ${role.name}`);
   return {
     success: true,
     userId,

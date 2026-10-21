@@ -179,7 +179,10 @@ const activateStudentApplication = async (target) => prisma.$transaction(async (
   const term = session?.terms[0];
   if (!session || !term) throw new AppError("An active academic session and term are required before approval.", 409, "ACTIVE_ACADEMIC_TERM_REQUIRED");
 
-  const registrationNumber = student.registrationNumber || await generateRegistrationNumber(tx, target.fullName || "Student User", new Date(), target.schoolId);
+  const registrationNumber = student.registrationNumber || await generateRegistrationNumber(tx, {
+    firstName: student.firstName,
+    lastName: student.lastName
+  });
   await tx.student.update({
     where: { id: student.id },
     data: {
@@ -255,19 +258,23 @@ const changeStatus = async (id, status, actor) => {
     } else {
       const existingStaff = await prisma.staff.findUnique({ where: { userId: id } });
       if (!existingStaff) {
-        const staffNumber = `MIC/STF/${Math.floor(1000 + Math.random() * 9000)}`;
-        assignedRegNumber = staffNumber;
-        await prisma.staff.create({
-          data: {
-            userId: id,
-            staffNumber,
-            firstName,
-            lastName,
-            jobTitle: titleCaseFromEnum(target.role),
-            status: "ACTIVE",
-            employmentDate: new Date()
-          }
+        const staffNumber = await prisma.$transaction(async (tx) => {
+          const generated = await require("../../core/utils/registration-identifiers")
+            .generateStaffRegistrationNumber(tx, target.fullName || `${firstName} ${lastName}`);
+          await tx.staff.create({
+            data: {
+              userId: id,
+              staffNumber: generated,
+              firstName,
+              lastName,
+              jobTitle: titleCaseFromEnum(target.role),
+              status: "ACTIVE",
+              employmentDate: new Date()
+            }
+          });
+          return generated;
         });
+        assignedRegNumber = staffNumber;
       } else {
         assignedRegNumber = existingStaff.staffNumber;
         await prisma.staff.update({ where: { id: existingStaff.id }, data: { status: "ACTIVE" } });

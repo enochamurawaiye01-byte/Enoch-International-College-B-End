@@ -170,7 +170,8 @@ const register = async (data, applicationLetterUrl = null) => {
         const staff = role === "TEACHER" ? await tx.staff.create({
             data: {
                 userId: user.id,
-                staffNumber: `MIC/STF/${crypto.randomBytes(16).toString("hex").toUpperCase()}`,
+                staffNumber: await require("../../core/utils/registration-identifiers")
+                    .generateStaffRegistrationNumber(tx, { firstName, lastName }),
                 firstName,
                 middleName: middleName || null,
                 lastName,

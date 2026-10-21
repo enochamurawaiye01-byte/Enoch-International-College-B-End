@@ -96,7 +96,9 @@ const createStudent = async (data, schoolId) => {
         if (status === "ACTIVE" && (!session || !term)) throw new AppError("An active academic session and term are required before student activation.", 409, "ACTIVE_ACADEMIC_TERM_REQUIRED");
 
         const user = await tx.user.create({ data: { schoolId: schoolId || null, fullName, email: data.email.toLowerCase(), phoneNumber: data.phoneNumber || null, passwordHash, role: "STUDENT", status: status === "ACTIVE" ? "ACTIVE" : "INACTIVE" } });
-        const registrationNumber = status === "ACTIVE" ? await generateRegistrationNumber(tx, fullName, new Date(), schoolId) : null;
+        const registrationNumber = status === "ACTIVE"
+            ? await generateRegistrationNumber(tx, { firstName: data.firstName, lastName: data.lastName })
+            : null;
         const student = await tx.student.create({ data: {
             userId: user.id,
             registrationNumber,
@@ -139,6 +141,9 @@ const createStudent = async (data, schoolId) => {
 };
 
 const getAllStudents = async (query, user) => {
+    if (user?.role !== "SUPER_ADMIN" && !user?.schoolId) {
+        throw new AppError("A school-scoped account is required to view student records.", 403, "STUDENT_ACCESS_DENIED");
+    }
     const requestedPage = Number.parseInt(query?.page, 10);
     const requestedPageSize = Number.parseInt(query?.pageSize, 10);
     const filters = {
@@ -167,9 +172,39 @@ const getAllStudents = async (query, user) => {
 const getStudentById = async (id, user) => {
     const student = await repository.findById(id);
     if (!student) throw new NotFoundError("Student not found");
+    if (user && user.role !== "SUPER_ADMIN" && (!user.schoolId || student.user?.schoolId !== user.schoolId)) {
+        throw new AppError("You cannot access a student from another school.", 403, "STUDENT_ACCESS_DENIED");
+    }
     if (user?.role === "STUDENT" && student.userId !== user.userId) throw new AppError("You can only view your own student profile.", 403, "STUDENT_ACCESS_DENIED");
     if (isTeachingAccount(user) && !(await isAssignedTeacherToStudent(user, student))) {
         throw new AppError("You are not assigned to this student's class.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
+    }
+    if (isTeachingAccount(user)) {
+        const assignedClassIds = new Set(await repository.findTeacherClassIds(user.userId, user.schoolId, user.role));
+        student.enrollments = (student.enrollments || []).filter((enrollment) => assignedClassIds.has(enrollment.classId));
+        student.promotions = (student.promotions || []).filter((promotion) =>
+            assignedClassIds.has(promotion.fromClassId) || assignedClassIds.has(promotion.toClassId)
+        );
+        student.reportCards = (student.reportCards || []).filter((reportCard) => assignedClassIds.has(reportCard.classId));
+    }
+    if (user?.role === "SUBJECT_TEACHER") {
+        const prisma = require("../../config/database").prisma;
+        const staff = await prisma.staff.findUnique({ where: { userId: user.userId }, select: { id: true } });
+        const assignments = staff
+            ? await prisma.teacherAssignment.findMany({
+                where: { staffId: staff.id },
+                select: { classId: true, subjectId: true, sessionId: true, termId: true }
+            })
+            : [];
+        student.reportCards = (student.reportCards || []).map((reportCard) => ({
+            ...reportCard,
+            entries: (reportCard.entries || []).filter((entry) => assignments.some((assignment) =>
+                assignment.classId === reportCard.classId
+                && assignment.subjectId === entry.subjectId
+                && (!assignment.sessionId || assignment.sessionId === reportCard.sessionId)
+                && (!assignment.termId || assignment.termId === reportCard.termId)
+            ))
+        })).filter((reportCard) => reportCard.entries.length > 0);
     }
     return enrichCurrentClassTeacher(student);
 };

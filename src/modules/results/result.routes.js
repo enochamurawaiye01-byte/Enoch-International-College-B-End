@@ -16,7 +16,7 @@ router.get("/mine", controller.getMine);
 router.get("/teacher", (req, _res, next) => TEACHING_ROLES.has(req.user?.role)
 	? next()
 	: next(new AuthError("A teaching account is required.", 403, "TEACHER_RESULT_ACCESS_DENIED")), controller.getTeacher);
-router.get("/", requireRoles("ADMIN", "SUPER_ADMIN"), controller.getAll);
-router.get("/:id", requireRoles("ADMIN", "SUPER_ADMIN"), controller.getById);
-router.patch("/:id/publish", requireRoles("ADMIN", "SUPER_ADMIN"), validate(publishResultSchema), controller.publish);
+router.get("/", requireRoles("ADMIN", "SUPER_ADMIN", "HEAD_TEACHER"), controller.getAll);
+router.get("/:id", requireRoles("ADMIN", "SUPER_ADMIN", "HEAD_TEACHER"), controller.getById);
+router.patch("/:id/publish", requireRoles("ADMIN", "SUPER_ADMIN", "HEAD_TEACHER"), validate(publishResultSchema), controller.publish);
 module.exports = router;
