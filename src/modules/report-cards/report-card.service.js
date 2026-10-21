@@ -45,6 +45,16 @@ const assertTeacherAssignment = async (user, { classId, subjectId, sessionId, te
 	if (!isTeachingAccount(user)) throw new AppError("You cannot manage these results.", 403, "REPORT_CARD_ACCESS_DENIED");
 	const staff = await repository.findStaffByUserId(user.userId);
 	if (!staff || staff.status !== "ACTIVE") throw new AppError("An active staff profile is required.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
+	const classTeacherAssignments = await repository.findClassTeacherAssignments({
+		staffId: staff.id,
+		session: { isActive: true, ...(user.schoolId ? { schoolId: user.schoolId } : {}) }
+	});
+	if (classTeacherAssignments.length) {
+		if (!classTeacherAssignments.some((assignment) => assignment.classId === classId)) {
+			throw new AppError("You are not assigned to this class for the selected session.", 403, "TEACHER_ASSIGNMENT_REQUIRED");
+		}
+		return staff.id;
+	}
 	const assignment = await repository.findTeacherAssignment({
 		staffId: staff.id,
 		classId,
@@ -280,13 +290,16 @@ const getById = async (id, user) => {
 	if (user.role === "STUDENT" && !report.studentPublished) throw new AppError("This report card has not been published to the student portal.", 403, "REPORT_CARD_NOT_PUBLISHED");
 	if (isTeachingAccount(user)) {
 		const staff = await repository.findStaffByUserId(user.userId);
-		const classTeacherAssignment = staff ? await repository.findClassTeacherAssignment({
+		const classTeacherAssignments = staff ? await repository.findClassTeacherAssignments({
 			staffId: staff.id,
-			classId: report.classId,
-			sessionId: report.sessionId,
 			session: { isActive: true, ...(user.schoolId ? { schoolId: user.schoolId } : {}) }
-		}) : null;
-		if (classTeacherAssignment) return report;
+		}) : [];
+		if (classTeacherAssignments.length) {
+			if (!classTeacherAssignments.some((assignment) => assignment.classId === report.classId)) {
+				throw new AppError("You are not assigned to this student's class.", 403, "REPORT_CARD_ACCESS_DENIED");
+			}
+			return report;
+		}
 		const allowedEntries = staff ? await Promise.all(report.entries.map(async (entry) => Boolean(await repository.findTeacherAssignment({
 			staffId: staff.id, classId: report.classId, subjectId: entry.subjectId,
 			AND: [{ OR: [{ sessionId: null }, { sessionId: report.sessionId }] }, { OR: [{ termId: null }, { termId: report.termId }] }]
@@ -536,8 +549,20 @@ const getAll = async (query, user) => {
 	if (isTeachingAccount(user)) {
 		const staff = await repository.findStaffByUserId(user.userId);
 		if (!staff) return [];
-		[assignments, classTeacherAssignments] = await Promise.all([
-			prisma.teacherAssignment.findMany({
+		classTeacherAssignments = await prisma.classTeacherAssignment.findMany({
+			where: {
+				staffId: staff.id,
+				session: { isActive: true, ...(user.schoolId ? { schoolId: user.schoolId } : {}) }
+			},
+			select: { classId: true, sessionId: true }
+		});
+		if (classTeacherAssignments.length) {
+			classTeacherAssignments = classTeacherAssignments.filter((assignment) =>
+				(!query.classId || assignment.classId === query.classId)
+				&& (!query.sessionId || assignment.sessionId === query.sessionId)
+			);
+		} else {
+			assignments = await prisma.teacherAssignment.findMany({
 				where: {
 					staffId: staff.id,
 					...(query.classId ? { classId: query.classId } : {}),
@@ -546,17 +571,8 @@ const getAll = async (query, user) => {
 					...(query.termId ? { OR: [{ termId: null }, { termId: query.termId }] } : {})
 				},
 				select: { classId: true, subjectId: true, sessionId: true, termId: true }
-			}),
-			prisma.classTeacherAssignment.findMany({
-				where: {
-					staffId: staff.id,
-					...(query.classId ? { classId: query.classId } : {}),
-					...(query.sessionId ? { sessionId: query.sessionId } : {}),
-					session: { isActive: true, ...(user.schoolId ? { schoolId: user.schoolId } : {}) }
-				},
-				select: { classId: true, sessionId: true }
-			})
-		]);
+			});
+		}
 		if (!assignments.length && !classTeacherAssignments.length) return [];
 		where.OR = [
 			...assignments.map((assignment) => ({

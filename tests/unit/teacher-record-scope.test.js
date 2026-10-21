@@ -40,7 +40,7 @@ test("a JSS1 class teacher cannot read or edit a JSS2 result or a result from an
 		update: resultRepository.update,
 		staffFindUnique: prisma.staff.findUnique,
 		teacherAssignmentFindFirst: prisma.teacherAssignment.findFirst,
-		classTeacherAssignmentFindFirst: prisma.classTeacherAssignment.findFirst
+		classTeacherAssignmentFindMany: prisma.classTeacherAssignment.findMany
 	};
 	const result = {
 		id: "result-1",
@@ -55,9 +55,9 @@ test("a JSS1 class teacher cannot read or edit a JSS2 result or a result from an
 	resultRepository.update = async () => { resultWriteCount += 1; return result; };
 	prisma.staff.findUnique = async () => ({ id: "staff-1" });
 	prisma.teacherAssignment.findFirst = async () => null;
-	prisma.classTeacherAssignment.findFirst = async ({ where }) => {
+	prisma.classTeacherAssignment.findMany = async ({ where }) => {
 		classTeacherFilter = where;
-		return null;
+		return [];
 	};
 	try {
 		await assert.rejects(
@@ -76,15 +76,16 @@ test("a JSS1 class teacher cannot read or edit a JSS2 result or a result from an
 			}),
 			(error) => error.code === "RESULT_ACCESS_DENIED"
 		);
-		assert.equal(classTeacherFilter.sessionId, "old-session");
-		assert.equal(classTeacherFilter.classId, "class-jss2");
+		assert.equal(classTeacherFilter.staffId, "staff-1");
+		assert.equal(classTeacherFilter.session.isActive, true);
+		assert.equal(classTeacherFilter.classId, undefined);
 		assert.equal(resultWriteCount, 0);
 	} finally {
 		resultRepository.findById = originals.findById;
 		resultRepository.update = originals.update;
 		prisma.staff.findUnique = originals.staffFindUnique;
 		prisma.teacherAssignment.findFirst = originals.teacherAssignmentFindFirst;
-		prisma.classTeacherAssignment.findFirst = originals.classTeacherAssignmentFindFirst;
+		prisma.classTeacherAssignment.findMany = originals.classTeacherAssignmentFindMany;
 	}
 });
 

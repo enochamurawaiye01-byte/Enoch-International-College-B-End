@@ -8,7 +8,14 @@ const findForTeacher = async (userId, filters = {}) => {
 	const { schoolId, ...resultFilters } = filters;
 	const staff = await prisma.staff.findUnique({ where: { userId }, select: { id: true } });
 	if (!staff) return [];
-	const assignments = await prisma.teacherAssignment.findMany({
+	const classTeacherAssignments = await prisma.classTeacherAssignment.findMany({
+		where: {
+			staffId: staff.id,
+			session: { isActive: true, ...(schoolId ? { schoolId } : {}) }
+		},
+		select: { classId: true, sessionId: true }
+	});
+	const assignments = classTeacherAssignments.length ? [] : await prisma.teacherAssignment.findMany({
 		where: {
 			staffId: staff.id,
 			AND: [
@@ -18,15 +25,11 @@ const findForTeacher = async (userId, filters = {}) => {
 		},
 		select: { classId: true, subjectId: true, sessionId: true, termId: true }
 	});
-	const classTeacherAssignments = await prisma.classTeacherAssignment.findMany({
-		where: {
-			staffId: staff.id,
-			session: { isActive: true, ...(schoolId ? { schoolId } : {}) },
-			...(resultFilters.sessionId ? { sessionId: resultFilters.sessionId } : {})
-		},
-		select: { classId: true, sessionId: true }
-	});
 	if (!assignments.length && !classTeacherAssignments.length) return [];
+	const visibleClassTeacherAssignments = resultFilters.sessionId
+		? classTeacherAssignments.filter((assignment) => assignment.sessionId === resultFilters.sessionId)
+		: classTeacherAssignments;
+	if (classTeacherAssignments.length && !visibleClassTeacherAssignments.length) return [];
 	return prisma.result.findMany({ where: {
 		...resultFilters,
 		...(schoolId ? { session: { schoolId } } : {}),
@@ -36,7 +39,7 @@ const findForTeacher = async (userId, filters = {}) => {
 			...(assignment.sessionId ? { sessionId: assignment.sessionId } : {}),
 			...(assignment.termId ? { termId: assignment.termId } : {})
 		})),
-		...classTeacherAssignments.map((assignment) => ({
+		...visibleClassTeacherAssignments.map((assignment) => ({
 			exam: { classId: assignment.classId },
 			sessionId: assignment.sessionId
 		}))
